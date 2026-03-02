@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Realtime Chat</title>
+    <!-- Font Awesome 6 (v7 does not exist) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Loading Screen (shown first, hidden after session check) -->
+<div id="loading-screen" class="overlay">
+    <div class="loading-card">
+        <div class="spinner"></div>
+        <p>Loading...</p>
+    </div>
+</div>
+
+<!-- Login Overlay (hidden by default, shown only if no session) -->
+<div id="login-container" class="overlay" style="display:none">
+    <div class="login-card">
+        <h1>💬 Realtime Chat</h1>
+        <input id="username" type="text" placeholder="Username" autocomplete="username">
+        <input id="password" type="password" placeholder="Password" autocomplete="current-password">
+        <button id="login-btn">Login</button>
+        <button id="register-btn" class="btn-secondary">Register</button>
+        <p id="authMsg"></p>
+    </div>
+</div>
+
+<!-- Main App -->
+<div class="app" style="display:none">
+    <div class="header">
+        <div class="user-info">
+            <i class="far fa-user"></i>
+            <input type="text" id="name-input" value="" disabled>
+        </div>
+        <span id="client-total" class="online-count">Online: 0</span>
+        <button id="logout-btn" class="btn-small">Logout</button>
+    </div>
+
+    <div class="container">
+        <!-- Sidebar: User List -->
+        <div class="sidebar">
+            <h3>Users</h3>
+            <ul id="userList"></ul>
+        </div>
+
+        <!-- Chat Area -->
+        <div class="chat-area">
+            <div class="chat-header">
+                <button id="back-btn" title="Back to users">&#8592;</button>
+                <h3 id="chatWith">Select someone</h3>
+            </div>
+            <ul class="messages" id="message-container"></ul>
+            <div id="typing-indicator" class="typing-indicator"></div>
+            <form class="input-area" id="message-form">
+                <!-- Image upload -->
+                <button type="button" id="image-btn" class="btn-icon" title="Send image">
+                    <i class="fas fa-image"></i>
+                </button>
+                <input type="file" id="image-input" accept="image/*" style="display:none">
+
+                <!-- Voice record -->
+                <button type="button" id="voice-btn" class="btn-icon" title="Record voice">
+                    🎤
+                </button>
+
+                <!-- Text input -->
+                <input type="text" id="message-input" placeholder="Type a message..." autocomplete="off">
+
+                <!-- Send -->
+                <button type="submit" class="btn-icon" title="Send">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.30.1/moment.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
