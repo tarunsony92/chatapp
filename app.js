@@ -212,8 +212,16 @@ io.on('connection', (socket) => {
             to: data.to,
             type: 'text',
             content,
-            time: Date.now()
+            time: Date.now(),
+            read: false,
+            readAt: null
         };
+
+        // Include reply context if provided
+        if (data.replyTo) {
+            msg.replyTo = data.replyTo;
+        }
+
         chatHistory.push(msg);
         saveState();
 
@@ -238,7 +246,9 @@ io.on('connection', (socket) => {
             to: data.to,
             type: 'image',
             content: data.base64,
-            time: Date.now()
+            time: Date.now(),
+            read: false,
+            readAt: null
         };
         chatHistory.push(msg);
         saveState();
@@ -257,7 +267,9 @@ io.on('connection', (socket) => {
             to: data.to,
             type: 'voice',
             content: data.base64,
-            time: Date.now()
+            time: Date.now(),
+            read: false,
+            readAt: null
         };
         chatHistory.push(msg);
         saveState();
@@ -267,7 +279,43 @@ io.on('connection', (socket) => {
         socket.emit('voice', msg);
     });
 
-    // Get chat history between two users
+    // Mark messages as read
+    socket.on('mark-read', (data) => {
+        if (!data || !data.from) return;
+        const fromUser = data.from;
+        const now = Date.now();
+        let changed = false;
+        
+        chatHistory.forEach(m => {
+            if (m.from === fromUser && m.to === socket.username && !m.read) {
+                m.read = true;
+                m.readAt = now;
+                changed = true;
+            }
+        });
+        
+        if (changed) {
+            saveState();
+            // notify sender that msgs are read
+            const senderSockets = userSockets.get(fromUser);
+            if (senderSockets) {
+                senderSockets.forEach(id => io.to(id).emit('msgs-read', {
+                    from: socket.username,
+                    readAt: now
+                }));
+            }
+        }
+    });
+
+    // Get unseen count for a user
+    socket.on('get-unseen', (targetUser) => {
+        if (typeof targetUser !== 'string') return;
+        const count = chatHistory.filter(m => 
+            m.from === targetUser && m.to === socket.username && !m.read
+        ).length;
+        socket.emit('unseen-count', { user: targetUser, count });
+    });
+
     socket.on('get-history', (targetUser) => {
         if (typeof targetUser !== 'string') return;
         const msgs = chatHistory.filter(m =>

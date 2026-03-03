@@ -30,8 +30,25 @@ const typingIndicator    = document.getElementById('typing-indicator');
 const backBtn            = document.getElementById('back-btn');
 const sidebar            = document.querySelector('.sidebar');
 const chatArea           = document.querySelector('.chat-area');
+const replyQuote         = document.getElementById('reply-quote');
+const replyQuoteContent  = document.querySelector('.reply-quote-content');
+const replyCloseBtn      = document.getElementById('reply-close-btn');
+const msgDetailsModal     = document.getElementById('msg-details-modal');
+const modalCloseBtn      = document.getElementById('modal-close-btn');
+const detailReplyBtn     = document.getElementById('detail-reply-btn');
+const detailCloseBtn     = document.getElementById('detail-close-btn');
+const searchInput        = document.getElementById('search-input');
+const searchResults      = document.getElementById('search-results');
 
-const isMobile = () => window.innerWidth <= 600;
+// State for reply
+let replyToMsg = null;
+let allAvailableUsers = []; // All users from server
+let messageMap = {}; // Map to store messages by time for quick lookup and scrolling
+
+// Detect mobile device
+function isMobile() {
+    return window.innerWidth < 768;
+}
 
 // Mobile: show chat panel, hide sidebar
 function showChatPanel() {
@@ -73,6 +90,26 @@ function escapeHtml(str) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
+}
+
+function updateUnseenBadge(username) {
+    const count = window.unseenCounts[username] || 0;
+    const userLi = Array.from(userListElement.children).find(li => li.dataset.username === username);
+    if (!userLi) return;
+    
+    let badge = userLi.querySelector('.unseen-badge');
+    if (count > 0) {
+        if (badge) {
+            badge.textContent = count;
+        } else {
+            badge = document.createElement('span');
+            badge.className = 'unseen-badge';
+            badge.textContent = count;
+            userLi.appendChild(badge);
+        }
+    } else {
+        if (badge) badge.remove();
+    }
 }
 
 /** Wrapper for API calls; handles 401 automatically */
@@ -204,25 +241,23 @@ function initSocket() {
 
     socket.on('user-list', list => {
         const me = nameInput.value;
-        userListElement.innerHTML = '';
+        window.currentUserList = list;
+        window.unseenCounts = window.unseenCounts || {};
+        allAvailableUsers = list.filter(u => u.username !== me);
+        
+        // Render only users with whom we have exchanged messages
+        updateChatUserList();
 
-        list.filter(u => u.username !== me).forEach(obj => {
-            const li = document.createElement('li');
-            const dot = obj.online ? '🟢' : '⚫';
-            li.textContent = `${dot} ${obj.username}`;
-            li.dataset.username = obj.username;
-            if (currentChatUser === obj.username) li.classList.add('active');
-            li.style.cursor = 'pointer';
-            if (!obj.online) li.style.opacity = '0.6';
-            li.addEventListener('click', () => selectUser(obj.username));
-            userListElement.appendChild(li);
+        // Fetch unseen counts for all users
+        allAvailableUsers.forEach(obj => {
+            socket.emit('get-unseen', obj.username);
         });
 
         // Auto-reselect last chat partner
         const stored = localStorage.getItem('chatWith');
         if (stored && stored !== me && list.some(u => u.username === stored)) {
             if (currentChatUser !== stored) selectUser(stored);
-            else showChatPanel(); // already selected, just ensure panel is correct on mobile
+            else showChatPanel();
         }
     });
 
@@ -241,24 +276,53 @@ function initSocket() {
     });
 
     socket.on('message', data => {
+        // Save incoming message to localStorage for chat list tracking
+        const chatHistory = JSON.parse(localStorage.getItem('chatHistory') || '[]');
+        chatHistory.push(data);
+        localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
+        updateChatUserList();
+        
         if (data.from === currentChatUser || data.to === currentChatUser) {
-            // avoid duplicate if sender (already added optimistically)
             if (data.from === nameInput.value) return;
             addMessageToUI(false, data);
+        } else {
+            window.unseenCounts = window.unseenCounts || {};
+            window.unseenCounts[data.from] = (window.unseenCounts[data.from] || 0) + 1;
+            updateUnseenBadge(data.from);
         }
     });
 
     socket.on('image', data => {
+        // Save incoming image to localStorage for chat list tracking
+        const chatHistory = JSON.parse(localStorage.getItem('chatHistory') || '[]');
+        chatHistory.push(data);
+        localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
+        updateChatUserList();
+        
         if (data.from === currentChatUser || data.to === currentChatUser) {
             if (data.from === nameInput.value) return;
             addImageToUI(false, data);
+        } else {
+            window.unseenCounts = window.unseenCounts || {};
+            window.unseenCounts[data.from] = (window.unseenCounts[data.from] || 0) + 1;
+            updateUnseenBadge(data.from);
         }
     });
 
     socket.on('voice', data => {
+        // Save incoming voice to localStorage for chat list tracking
+        const chatHistory = JSON.parse(localStorage.getItem('chatHistory') || '[]');
+        chatHistory.push(data);
+        localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
+        updateChatUserList();
+        
         if (data.from === currentChatUser || data.to === currentChatUser) {
             if (data.from === nameInput.value) return;
             addVoiceToUI(false, data);
+        } else {
+            window.unseenCounts = window.unseenCounts || {};
+            window.unseenCounts[data.from] = (window.unseenCounts[data.from] || 0) + 1;
+            updateUnseenBadge(data.from);
         }
     });
 
@@ -271,6 +335,56 @@ function initSocket() {
 
     socket.on('error', data => {
         if (data && data.message) alert('Error: ' + data.message);
+    });
+
+    // Receive notification that messages were read by recipient
+    socket.on('msgs-read', data => {
+        if (data && data.from === currentChatUser) {
+            // Mark all messages to this user as read
+            document.querySelectorAll('.message-right').forEach(li => {
+                const span = li.querySelector('span');
+                if (span && span.textContent.includes('sent')) {
+                    span.textContent = span.textContent.replace('✓ sent', `✓✓ ${formatTime(data.readAt)}`);
+                }
+            });
+        }
+    });
+
+    // Receive unseen count for a user
+    socket.on('unseen-count', data => {
+        if (data && typeof data.user === 'string') {
+            window.unseenCounts = window.unseenCounts || {};
+            window.unseenCounts[data.user] = data.count || 0;
+            updateUnseenBadge(data.user);
+        }
+    });
+
+    // Modal and Reply handlers
+    modalCloseBtn.addEventListener('click', () => {
+        msgDetailsModal.style.display = 'none';
+        replyToMsg = null;
+    });
+    
+    detailCloseBtn.addEventListener('click', () => {
+        msgDetailsModal.style.display = 'none';
+        replyToMsg = null;
+    });
+    
+    detailReplyBtn.addEventListener('click', () => {
+        msgDetailsModal.style.display = 'none';
+        setupReplyUI(replyToMsg);
+    });
+    
+    replyCloseBtn.addEventListener('click', () => {
+        setupReplyUI(null);
+    });
+    
+    // Close modal when clicking outside
+    msgDetailsModal.addEventListener('click', (e) => {
+        if (e.target === msgDetailsModal) {
+            msgDetailsModal.style.display = 'none';
+            replyToMsg = null;
+        }
     });
 
     // Message form
@@ -297,6 +411,13 @@ function initSocket() {
         reader.onload = evt => {
             const base64 = evt.target.result;
             const msg = { from: nameInput.value, to: currentChatUser, type: 'image', content: base64, time: Date.now() };
+            
+            // Save to localStorage for chat list tracking
+            const chatHistory = JSON.parse(localStorage.getItem('chatHistory') || '[]');
+            chatHistory.push(msg);
+            localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
+            updateChatUserList();
+            
             socket.emit('image', { to: currentChatUser, base64 });
             addImageToUI(true, msg);
             imageInput.value = '';
@@ -321,6 +442,13 @@ function initSocket() {
                     reader.onload = evt => {
                         const base64 = evt.target.result;
                         const msg = { from: nameInput.value, to: currentChatUser, type: 'voice', content: base64, time: Date.now() };
+                        
+                        // Save to localStorage for chat list tracking
+                        const chatHistory = JSON.parse(localStorage.getItem('chatHistory') || '[]');
+                        chatHistory.push(msg);
+                        localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
+                        updateChatUserList();
+                        
                         socket.emit('voice', { to: currentChatUser, base64 });
                         addVoiceToUI(true, msg);
                         resetInactivity();
@@ -350,16 +478,121 @@ function sendMessage() {
     const text = messageInput.value.trim();
     if (!text || !currentChatUser) return;
     const msg = { from: nameInput.value, to: currentChatUser, type: 'text', content: text, time: Date.now() };
-    socket.emit('message', { to: currentChatUser, text });
+    const emitData = { to: currentChatUser, text };
+    
+    // Include reply context if replying to a message
+    if (replyToMsg) {
+        msg.replyTo = { from: replyToMsg.from, type: replyToMsg.type, time: replyToMsg.time, preview: replyToMsg.type === 'text' ? replyToMsg.content.substring(0, 30) : `[${replyToMsg.type.toUpperCase()}]` };
+        emitData.replyTo = msg.replyTo;
+    }
+    
+    // Save to localStorage for chat list tracking
+    const chatHistory = JSON.parse(localStorage.getItem('chatHistory') || '[]');
+    chatHistory.push(msg);
+    localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
+    updateChatUserList();
+    
+    socket.emit('message', emitData);
     addMessageToUI(true, msg);
     messageInput.value = '';
     if (typingIndicator) typingIndicator.textContent = '';
     socket.emit('typing', { to: currentChatUser, active: false });
+    setupReplyUI(null);
     resetInactivity();
 }
 
 function formatTime(ts) {
     return moment(Number(ts)).fromNow();
+}
+
+function setupMessageSwipe(element, messageData) {
+    if (!element) return;
+    
+    let startX = 0;
+    const threshold = 50;
+    
+    element.addEventListener('touchstart', e => {
+        startX = e.touches[0].clientX;
+    }, { passive: true });
+    
+    element.addEventListener('touchend', e => {
+        const endX = e.changedTouches[0].clientX;
+        const diff = endX - startX;
+        
+        // Swipe right on left-side messages (received) -> reply
+        if (diff > threshold && !element.classList.contains('message-right')) {
+            showMessageDetails(messageData);
+        }
+        // Swipe left on right-side messages (sent) -> reply
+        else if (diff < -threshold && element.classList.contains('message-right')) {
+            showMessageDetails(messageData);
+        }
+    }, { passive: true });
+    
+    // Also add click handler for desktop
+    element.addEventListener('click', () => {
+        showMessageDetails(messageData);
+    });
+}
+
+function showMessageDetails(msgData) {
+    if (!msgData) return;
+    
+    replyToMsg = msgData;
+    
+    // Populate modal with minimal details: sent time, status, read time
+    document.getElementById('detail-time').textContent = formatTime(msgData.time) + ` (${new Date(msgData.time).toLocaleString()})`;
+    
+    if (msgData.read) {
+        document.getElementById('detail-read-row').style.display = 'flex';
+        document.getElementById('detail-read-time').textContent = formatTime(msgData.readAt) + ` (${new Date(msgData.readAt).toLocaleString()})`;
+        document.getElementById('detail-status').textContent = '✓✓ Seen';
+    } else {
+        document.getElementById('detail-read-row').style.display = 'none';
+        document.getElementById('detail-status').textContent = '✓ Sent';
+    }
+    
+    msgDetailsModal.style.display = 'flex';
+}
+
+// Scroll to and highlight original message when clicking reply context
+function scrollToMessage(fromUser, messageTime) {
+    // Find message element by iterating through messageMap
+    let targetElement = null;
+    for (let key in messageMap) {
+        const msg = messageMap[key];
+        if (msg && msg.from === fromUser && msg.time === messageTime) {
+            targetElement = msg.element;
+            break;
+        }
+    }
+    
+    if (!targetElement) {
+        console.log('Message not found in current chat');
+        return;
+    }
+    
+    // Scroll to message
+    targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    
+    // Highlight message
+    targetElement.classList.add('highlighted');
+    setTimeout(() => {
+        targetElement.classList.remove('highlighted');
+    }, 2000);
+}
+
+function setupReplyUI(msg) {
+    if (!msg) {
+        replyToMsg = null;
+        replyQuote.style.display = 'none';
+        return;
+    }
+    
+    replyToMsg = msg;
+    const preview = msg.type === 'text' ? msg.content : `[${msg.type.toUpperCase()}]`;
+    replyQuoteContent.textContent = `Reply to ${escapeHtml(msg.from)}: ${preview.substring(0, 50)}${preview.length > 50 ? '...' : ''}`;
+    replyQuote.style.display = 'flex';
 }
 
 function addMessageToUI(isOwn, data) {
@@ -369,17 +602,37 @@ function addMessageToUI(isOwn, data) {
     const li = document.createElement('li');
     li.className = isOwn ? 'message-right' : 'message-left';
 
+    // Add reply context if message contains replyTo
+    if (data.replyTo) {
+        const replyDiv = document.createElement('div');
+        replyDiv.className = 'message-reply-context';
+        replyDiv.style.cursor = 'pointer';
+        replyDiv.innerHTML = `<small><strong>${escapeHtml(data.replyTo.from)}:</strong> ${escapeHtml(data.replyTo.preview)}</small>`;
+        replyDiv.addEventListener('click', () => {
+            scrollToMessage(data.replyTo.from, data.replyTo.time || 0);
+        });
+        li.appendChild(replyDiv);
+    }
+
     const p = document.createElement('p');
-    p.className = 'message';
-    p.textContent = data.content;   // safe — textContent, not innerHTML
+    p.className = 'message has-actions';
+    p.textContent = data.content;
 
     const span = document.createElement('span');
-    span.textContent = `${isOwn ? 'You' : escapeHtml(data.from)} • ${formatTime(data.time)}`;
+    let status = isOwn ? (data.read ? '✓✓' : '✓ sent') : '';
+    span.textContent = `${isOwn ? 'You' : escapeHtml(data.from)} • ${formatTime(data.time)} ${status}`.trim();
+    span.classList.add('msg-time');
     p.appendChild(span);
     li.appendChild(p);
 
     messageContainer.appendChild(li);
     messageContainer.scrollTop = messageContainer.scrollHeight;
+    
+    // Store message in map for quick lookup
+    const msgKey = `${data.from}-${data.time}`;
+    messageMap[msgKey] = { ...data, element: li };
+    
+    setupMessageSwipe(p, data);
 }
 
 function addImageToUI(isOwn, data) {
@@ -388,8 +641,20 @@ function addImageToUI(isOwn, data) {
     const li = document.createElement('li');
     li.className = isOwn ? 'message-right' : 'message-left';
 
+    // Add reply context if message contains replyTo
+    if (data.replyTo) {
+        const replyDiv = document.createElement('div');
+        replyDiv.className = 'message-reply-context';
+        replyDiv.style.cursor = 'pointer';
+        replyDiv.innerHTML = `<small><strong>${escapeHtml(data.replyTo.from)}:</strong> ${escapeHtml(data.replyTo.preview)}</small>`;
+        replyDiv.addEventListener('click', () => {
+            scrollToMessage(data.replyTo.from, data.replyTo.time || 0);
+        });
+        li.appendChild(replyDiv);
+    }
+
     const p = document.createElement('p');
-    p.className = 'message';
+    p.className = 'message has-actions';
 
     const img = document.createElement('img');
     img.src = data.content;
@@ -397,7 +662,9 @@ function addImageToUI(isOwn, data) {
     img.loading = 'lazy';
 
     const span = document.createElement('span');
-    span.textContent = `${isOwn ? 'You' : escapeHtml(data.from)} • ${formatTime(data.time)}`;
+    let status = isOwn ? (data.read ? '✓✓' : '✓ sent') : '';
+    span.textContent = `${isOwn ? 'You' : escapeHtml(data.from)} • ${formatTime(data.time)} ${status}`.trim();
+    span.classList.add('msg-time');
 
     p.appendChild(img);
     p.appendChild(span);
@@ -405,6 +672,12 @@ function addImageToUI(isOwn, data) {
 
     messageContainer.appendChild(li);
     messageContainer.scrollTop = messageContainer.scrollHeight;
+    
+    // Store message in map for quick lookup
+    const msgKey = `${data.from}-${data.time}`;
+    messageMap[msgKey] = { ...data, element: li };
+    
+    setupMessageSwipe(p, data);
 }
 
 function addVoiceToUI(isOwn, data) {
@@ -413,15 +686,29 @@ function addVoiceToUI(isOwn, data) {
     const li = document.createElement('li');
     li.className = isOwn ? 'message-right' : 'message-left';
 
+    // Add reply context if message contains replyTo
+    if (data.replyTo) {
+        const replyDiv = document.createElement('div');
+        replyDiv.className = 'message-reply-context';
+        replyDiv.style.cursor = 'pointer';
+        replyDiv.innerHTML = `<small><strong>${escapeHtml(data.replyTo.from)}:</strong> ${escapeHtml(data.replyTo.preview)}</small>`;
+        replyDiv.addEventListener('click', () => {
+            scrollToMessage(data.replyTo.from, data.replyTo.time || 0);
+        });
+        li.appendChild(replyDiv);
+    }
+
     const p = document.createElement('p');
-    p.className = 'message';
+    p.className = 'message has-actions';
 
     const audio = document.createElement('audio');
     audio.controls = true;
     audio.src = data.content;
 
     const span = document.createElement('span');
-    span.textContent = `${isOwn ? 'You' : escapeHtml(data.from)} • ${formatTime(data.time)}`;
+    let status = isOwn ? (data.read ? '✓✓' : '✓ sent') : '';
+    span.textContent = `${isOwn ? 'You' : escapeHtml(data.from)} • ${formatTime(data.time)} ${status}`.trim();
+    span.classList.add('msg-time');
 
     p.appendChild(audio);
     p.appendChild(span);
@@ -429,12 +716,24 @@ function addVoiceToUI(isOwn, data) {
 
     messageContainer.appendChild(li);
     messageContainer.scrollTop = messageContainer.scrollHeight;
+    
+    // Store message in map for quick lookup
+    const msgKey = `${data.from}-${data.time}`;
+    messageMap[msgKey] = { ...data, element: li };
+    
+    setupMessageSwipe(p, data);
 }
 
 function selectUser(username) {
     currentChatUser = username;
-    if (chatWithElement) chatWithElement.textContent = username;
     localStorage.setItem('chatWith', username);
+
+    // Update chat header with username and online status
+    if (chatWithElement) {
+        const userObj = window.currentUserList?.find(u => u.username === username);
+        const onlineStatus = userObj?.online ? 'online' : 'offline';
+        chatWithElement.innerHTML = `<div>${escapeHtml(username)}</div><small style="opacity:0.7">${onlineStatus}</small>`;
+    }
 
     // Highlight active user
     Array.from(userListElement.children).forEach(li => {
@@ -443,11 +742,112 @@ function selectUser(username) {
 
     messageContainer.innerHTML = '';
     if (typingIndicator) typingIndicator.textContent = '';
+    
+    // Clear message map for new chat
+    messageMap = {};
+    
     socket.emit('get-history', username);
+    
+    // Mark messages from this user as read
+    socket.emit('mark-read', { from: username });
+    
+    // Get unseen count
+    socket.emit('get-unseen', username);
+    
     resetInactivity();
-
-    // On mobile: slide to chat view
     showChatPanel();
+}
+
+// ── Search and Chat List Management ──────────────────────────────────────────
+
+// Get list of users with whom we have exchanged messages
+function getChatUsers() {
+    // Load chat history from localStorage
+    const chatHistory = JSON.parse(localStorage.getItem('chatHistory') || '[]');
+    const usersWithChats = new Set();
+    
+    chatHistory.forEach(msg => {
+        const me = nameInput.value;
+        if (msg.from === me) usersWithChats.add(msg.to);
+        if (msg.to === me) usersWithChats.add(msg.from);
+    });
+    
+    return Array.from(usersWithChats);
+}
+
+// Update the main user list to show only users with chats
+function updateChatUserList() {
+    const me = nameInput.value;
+    const chatUsers = getChatUsers();
+    
+    userListElement.innerHTML = '';
+    const chatUserObjs = allAvailableUsers.filter(u => chatUsers.includes(u.username));
+    
+    if (chatUserObjs.length === 0) {
+        userListElement.innerHTML = '<li style="opacity:0.6; padding: 10px 12px; font-size:12px;">No conversations yet</li>';
+    }
+    
+    chatUserObjs.forEach(obj => {
+        const li = document.createElement('li');
+        li.dataset.username = obj.username;
+        
+        const dot = obj.online ? '🟢' : '⚫';
+        const count = window.unseenCounts[obj.username] || 0;
+        const badge = count > 0 ? ` <span class="unseen-badge">${count}</span>` : '';
+        
+        li.innerHTML = `${dot} ${escapeHtml(obj.username)}${badge}`;
+        if (currentChatUser === obj.username) li.classList.add('active');
+        li.style.cursor = 'pointer';
+        if (!obj.online) li.style.opacity = '0.6';
+        li.addEventListener('click', () => selectUser(obj.username));
+        userListElement.appendChild(li);
+    });
+}
+
+// Handle search input
+if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+        const query = e.target.value.trim().toLowerCase();
+        
+        if (!query) {
+            searchResults.style.display = 'none';
+            updateChatUserList();
+            return;
+        }
+        
+        const me = nameInput.value;
+        const filtered = allAvailableUsers.filter(u => 
+            u.username.toLowerCase().includes(query) && u.username !== me
+        );
+        
+        searchResults.innerHTML = '';
+        if (filtered.length === 0) {
+            searchResults.innerHTML = '<li style="opacity:0.6; padding: 10px 12px; font-size:12px;">No users found</li>';
+        } else {
+            filtered.forEach(obj => {
+                const li = document.createElement('li');
+                li.dataset.username = obj.username;
+                
+                const dot = obj.online ? '🟢' : '⚫';
+                li.innerHTML = `${dot} ${escapeHtml(obj.username)}`;
+                li.addEventListener('click', () => {
+                    selectUser(obj.username);
+                    searchInput.value = '';
+                    searchResults.style.display = 'none';
+                });
+                searchResults.appendChild(li);
+            });
+        }
+        
+        searchResults.style.display = 'block';
+    });
+    
+    // Hide search results when clicking outside
+    document.addEventListener('click', (e) => {
+        if (e.target !== searchInput) {
+            searchResults.style.display = 'none';
+        }
+    });
 }
 
 // ── Inactivity logout ────────────────────────────────────────────────────────

@@ -45,7 +45,9 @@
         <!-- Sidebar: User List -->
         <div class="sidebar">
             <h3>Users</h3>
+            <input type="text" id="search-input" class="search-input" placeholder="🔍 Search users...">
             <ul id="userList"></ul>
+            <ul id="search-results" class="search-results" style="display:none"></ul>
         </div>
 
         <!-- Chat Area -->
@@ -56,6 +58,11 @@
             </div>
             <ul class="messages" id="message-container"></ul>
             <div id="typing-indicator" class="typing-indicator"></div>
+            <!-- Reply quote (shown when replying) -->
+            <div id="reply-quote" class="reply-quote" style="display:none">
+                <div class="reply-quote-content"></div>
+                <button type="button" class="reply-close" id="reply-close-btn">×</button>
+            </div>
             <form class="input-area" id="message-form">
                 <!-- Image upload -->
                 <button type="button" id="image-btn" class="btn-icon" title="Send image">
@@ -76,6 +83,34 @@
                     <i class="fas fa-paper-plane"></i>
                 </button>
             </form>
+        </div>
+    </div>
+</div>
+
+<!-- Message Details Modal -->
+<div id="msg-details-modal" class="modal" style="display:none">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Message Details</h3>
+            <button type="button" class="modal-close" id="modal-close-btn">×</button>
+        </div>
+        <div class="modal-body">
+            <div class="detail-row">
+                <span class="detail-label">Sent:</span>
+                <span id="detail-time" class="detail-value"></span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Status:</span>
+                <span id="detail-status" class="detail-value"></span>
+            </div>
+            <div class="detail-row" id="detail-read-row" style="display:none">
+                <span class="detail-label">Read:</span>
+                <span id="detail-read-time" class="detail-value"></span>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" id="detail-reply-btn" class="btn-primary">Reply</button>
+            <button type="button" id="detail-close-btn" class="btn-secondary">Close</button>
         </div>
     </div>
 </div>
