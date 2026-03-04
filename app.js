@@ -17,6 +17,17 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// COOKIE OPTIONS
+const AUTH_COOKIE_NAME = 'token';
+const AUTH_COOKIE_OPTIONS = {
+    httpOnly: true,
+    sameSite: 'lax',
+    path: '/',
+    // Persist across reload + browser restart for token lifetime
+    maxAge: 2 * 60 * 60 * 1000,
+    secure: process.env.NODE_ENV === 'production'
+};
+
 // DATABASE
 let chatHistory = [];
 let users = {};
@@ -91,7 +102,7 @@ loadState();
 
 // AUTH MIDDLEWARE
 function authMiddleware(req, res, next) {
-    const token = req.cookies.token;
+    const token = req.cookies[AUTH_COOKIE_NAME];
     if (!token) return res.status(401).json({ error: 'Not authenticated' });
     try {
         req.user = jwt.verify(token, JWT_SECRET);
@@ -117,7 +128,10 @@ app.post('/api/register', async (req, res) => {
         const hash = await bcrypt.hash(password, 10);
         users[username] = { hash };
         await saveState();
-        res.status(201).json({ ok: true });
+        // Auto-login after register so refresh doesn't require re-login
+        const token = jwt.sign({ username }, JWT_SECRET, { expiresIn: '2h' });
+        res.cookie(AUTH_COOKIE_NAME, token, AUTH_COOKIE_OPTIONS);
+        res.status(201).json({ username });
     } catch (e) {
         console.error('Register error:', e.message);
         res.status(500).json({ error: 'Server error' });
@@ -134,7 +148,7 @@ app.post('/api/login', async (req, res) => {
         const ok = await bcrypt.compare(password, u.hash);
         if (!ok) return res.status(401).json({ error: 'Invalid username or password' });
         const token = jwt.sign({ username }, JWT_SECRET, { expiresIn: '2h' });
-        res.cookie('token', token, { httpOnly: true, sameSite: 'strict' });
+        res.cookie(AUTH_COOKIE_NAME, token, AUTH_COOKIE_OPTIONS);
         res.json({ username });
     } catch (e) {
         console.error('Login error:', e.message);
@@ -147,7 +161,7 @@ app.get('/api/me', authMiddleware, (req, res) => {
 });
 
 app.post('/api/logout', (req, res) => {
-    res.clearCookie('token');
+    res.clearCookie(AUTH_COOKIE_NAME, { path: '/' });
     res.json({ ok: true });
 });
 
@@ -174,7 +188,7 @@ const userSockets = new Map();      // username -> Set of socketIds
 function broadcastUserList() {
     const online = new Set(socketsConnected.values());
     const list = Object.keys(users).map(u => ({ username: u, online: online.has(u) }));
-    io.emit('user-list', list);
+    io.emit('users', list);
 }
 
 // SOCKET AUTH

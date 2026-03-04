@@ -1,0 +1,70 @@
+/**
+ * CSS Variables & Color Scheme
+ * Centralized color definitions and design tokens
+ */
+
+:root {
+    /* Colors */
+    --primary-color: #667eea;
+    --primary-dark: #764ba2;
+    --text-dark: #333;
+    --text-light: #555;
+    --text-lighter: #999;
+    --border-color: #ddd;
+    --border-light: #e5e7eb;
+    --background-light: #f0f4ff;
+    --background-lighter: #f8fafc;
+    --success-color: #10b981;
+    --danger-color: #ef4444;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.35);
+
+    /* Border Radius */
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 16px;
+
+    /* Spacing */
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 12px;
+    --spacing-lg: 16px;
+    --spacing-xl: 24px;
+
+    /* Transitions */
+    --transition-fast: 0.15s ease;
+    --transition-base: 0.2s ease;
+    --transition-slow: 0.3s ease;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(180deg, rgba(104,109,255,0.06) 0%, rgba(118,75,162,0.04) 100%);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-dark);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Make the app look like a centered card */
+.app {
+    width: 100%;
+    max-width: 1100px;
+    height: 90vh;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-lg);
+    background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+}

@@ -1,0 +1,237 @@
+/**
+ * Mobile Responsive Styles
+ * Tablet and mobile-specific layout adjustments
+ */
+
+/* Tablet: 768px and below */
+@media (max-width: 767px) {
+    /* App Layout */
+    .app {
+        width: 100vw;
+        height: 100vh;
+    }
+
+    /* Header */
+    .header {
+        padding: var(--spacing-md);
+        flex-wrap: wrap;
+        gap: var(--spacing-md);
+    }
+
+    .user-info {
+        flex: 1;
+        min-width: 150px;
+    }
+
+    .online-count {
+        order: 3;
+        flex-basis: 100%;
+    }
+
+    /* Container */
+    .container {
+        position: relative;
+    }
+
+    /* Sidebar */
+    .sidebar {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 240px;
+        height: 100%;
+        min-width: unset;
+        border-right: none;
+        z-index: 10;
+        padding: var(--spacing-md);
+        transition: transform 0.28s ease;
+        background: white;
+    }
+
+    .sidebar.hidden-mobile {
+        transform: translateX(-100%);
+        pointer-events: none;
+    }
+
+    .sidebar h3 {
+        font-size: 15px;
+        margin-bottom: var(--spacing-md);
+    }
+
+    #userList li, .search-results li {
+        padding: 13px var(--spacing-md);
+        font-size: 14px;
+    }
+
+    /* Chat Area */
+    .chat-area {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        z-index: 11;
+        transform: translateX(100%);
+        transition: transform 0.28s ease;
+        background: white;
+    }
+
+    .chat-area.visible-mobile {
+        transform: translateX(0);
+    }
+
+    /* Chat Header */
+    .chat-header {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-md);
+        padding: var(--spacing-sm) var(--spacing-md);
+    }
+
+    #back-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 34px;
+        height: 34px;
+        border: none;
+        background: transparent;
+        color: var(--primary-color);
+        font-size: 22px;
+        cursor: pointer;
+        border-radius: var(--radius-md);
+        flex-shrink: 0;
+        padding: 0;
+        line-height: 1;
+    }
+
+    .chat-header h3 {
+        flex: 1;
+        font-size: 14px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .chat-header small {
+        font-size: 11px;
+    }
+
+    /* Message Container */
+    .messages {
+        padding: var(--spacing-md);
+        gap: var(--spacing-sm);
+    }
+
+    .message {
+        max-width: 85%;
+        padding: var(--spacing-sm) var(--spacing-md);
+        font-size: 13px;
+    }
+
+    .msg-time {
+        font-size: 10px;
+        margin-top: 2px;
+    }
+
+    /* Input Area */
+    .input-area {
+        padding: var(--spacing-sm) var(--spacing-md);
+        gap: var(--spacing-sm);
+    }
+
+    #message-input {
+        min-height: 34px;
+        padding: var(--spacing-xs) var(--spacing-sm);
+        font-size: 13px;
+    }
+
+    .btn-icon {
+        width: 34px;
+        height: 34px;
+        font-size: 15px;
+    }
+
+    /* Reply Quote Mobile */
+    .reply-quote {
+        margin: 0 var(--spacing-md);
+        padding: var(--spacing-sm);
+    }
+
+    /* Search Input */
+    .search-input {
+        padding: var(--spacing-sm);
+        margin-bottom: var(--spacing-sm);
+        font-size: 12px;
+    }
+
+    /* Modal Mobile */
+    .modal-content {
+        width: 95%;
+        max-height: 90vh;
+    }
+
+    .modal-body {
+        gap: var(--spacing-md);
+        padding: var(--spacing-md);
+    }
+
+    .detail-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--spacing-sm);
+        padding: var(--spacing-sm);
+    }
+
+    .modal-footer {
+        flex-direction: column;
+        gap: var(--spacing-sm);
+        padding: var(--spacing-md);
+    }
+
+    .btn-primary, .btn-secondary {
+        width: 100%;
+        padding: var(--spacing-sm) var(--spacing-md);
+    }
+
+    /* Typing Indicator */
+    .typing-indicator {
+        padding: 0 var(--spacing-md);
+        font-size: 11px;
+    }
+}
+
+/* Small phones: 360px max */
+@media (max-width: 360px) {
+    /* Sidebar */
+    .sidebar {
+        width: 200px;
+    }
+
+    /* Message */
+    .message {
+        max-width: 95%;
+        padding: var(--spacing-xs) var(--spacing-sm);
+        font-size: 12px;
+    }
+
+    /* Login Card */
+    .login-card {
+        padding: var(--spacing-lg) var(--spacing-md);
+        max-width: 90vw;
+    }
+
+    .login-card h1 {
+        font-size: 18px;
+        margin-bottom: var(--spacing-lg);
+    }
+
+    .login-card input,
+    .login-card button {
+        padding: 8px;
+        font-size: 13px;
+    }
+
+    /* Modal */
+    .modal-content {
+        width: 98%;
+    }
+}
