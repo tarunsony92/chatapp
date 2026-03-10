@@ -1,534 +1,334 @@
 /**
- * Audio Call Module
- * Handles WebRTC peer-to-peer audio calls using Socket.IO signaling
+ * audio-call.js — NexChat Audio Call Module
+ * WebRTC P2P audio calls via Socket.IO signaling
  */
 
-console.log('[AUDIO-CALL-MODULE] Loading...');
+console.log('[AUDIO-CALL] Module loading...');
 
-// Helper to get socket safely
-function getSocket() {
-    return window.socket;
-}
+/* ─── socket helper ─────────────────────────────────── */
+function getSocket() { return window.socket; }
+function getMe()     { return window.currentUsername || ''; }
 
-// Global state
-let peerConnection = null;
-let localStream = null;
-let callInProgress = false;
-let callPartner = null; // Jo user ke saath call hai
-let incomingCallFrom = null;
-let callStartTime = null;
+/* ─── state ─────────────────────────────────────────── */
+let peerConnection      = null;
+let localStream         = null;
+let callInProgress      = false;
+let callPartner         = null;
+let incomingCallFrom    = null;
+let callStartTime       = null;
 let callDurationInterval = null;
+let pendingOffer        = null;
+let ringtoneInterval    = null;
 
-// Get DOM elements
-let callModal = document.getElementById('call-modal');
-let incomingCallModal = document.getElementById('incoming-call-modal');
-let callStatusEl = document.getElementById('call-status');
-let incomingCallerNameEl = document.getElementById('incoming-caller-name');
-let callDurationEl = document.getElementById('call-duration');
-let localAudioEl = document.getElementById('local-audio');
-let remoteAudioEl = document.getElementById('remote-audio');
+/* ─── DOM ────────────────────────────────────────────── */
+const callModal         = document.getElementById('call-modal');
+const incomingCallModal = document.getElementById('incoming-call-modal');
+const callStatusEl      = document.getElementById('call-status');
+const callPeerNameEl    = document.getElementById('call-peer-name');
+const incomingCallerEl  = document.getElementById('incoming-caller-name');
+const callDurationEl    = document.getElementById('call-duration');
+// Use separate IDs from video call module to avoid conflicts
+const localAudioEl      = document.getElementById('local-audio');
+const remoteAudioEl     = document.getElementById('remote-audio-call');
 
-// ICE servers
-const iceServers = {
+/* ─── ICE servers ───────────────────────────────────── */
+const ICE_CONFIG = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' }
+        { urls: 'stun:stun1.l.google.com:19302' }
     ]
 };
 
-/**
- * Initialize audio call - called when user clicks call button
- */
-async function initiateAudioCall(recipientUsername) {
-    if (callInProgress) {
-        alert('Call already in progress');
-        return;
-    }
-    
-    const socket = window.socket;
-    if (!socket || !socket.connected) {
-        alert('Socket not connected. Please wait and try again.');
-        return;
-    }
+/* ════════════════════════════════════════════════════════
+   INITIATE CALL
+════════════════════════════════════════════════════════ */
+async function initiateAudioCall(username) {
+    if (callInProgress) { alert('Already in a call'); return; }
+    const socket = getSocket();
+    if (!socket || !socket.connected) { alert('Socket not connected'); return; }
 
-    callPartner = recipientUsername; // Track call partner
+    callPartner   = username;
+    callInProgress = true;
 
     try {
-        // Get user's microphone
-        localStream = await navigator.mediaDevices.getUserMedia({ 
-            audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true
-            },
-            video: false 
+        localStream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
         });
+        if (localAudioEl) { localAudioEl.srcObject = localStream; }
 
-        // Show call UI
-        showCallUI();
-        callStatusEl.textContent = 'Connecting...';
-        const callPeerNameEl = document.querySelector('.call-peer-name');
-        if (callPeerNameEl) {
-            callPeerNameEl.textContent = recipientUsername;
-        }
-
-        // Create peer connection
         createPeerConnection();
+        localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
 
-        // Add local stream to peer connection
-        localStream.getTracks().forEach(track => {
-            peerConnection.addTrack(track, localStream);
-        });
+        showCallUI(username);
+        if (callStatusEl) callStatusEl.textContent = 'Calling ' + username + '…';
 
-        // Create and send offer
-        const offer = await peerConnection.createOffer({
-            offerToReceiveAudio: true,
-            offerToReceiveVideo: false
-        });
-
+        const offer = await peerConnection.createOffer();
         await peerConnection.setLocalDescription(offer);
 
-        console.log('[CALL] Initiating call to:', recipientUsername);
-        getSocket().emit('call-initiate', {
-            to: recipientUsername,
-            offer: offer
-        });
+        socket.emit('call-initiate', { to: username, offer });
 
-        callStatusEl.textContent = 'Calling ' + recipientUsername + '...';
     } catch (err) {
-        console.error('Error initiating call:', err);
-        alert('Error accessing microphone: ' + err.message);
+        console.error('[AUDIO-CALL] initiateAudioCall error:', err);
+        alert('Microphone error: ' + err.message);
         endCall();
     }
 }
 
-/**
- * Handle incoming call
- */
-async function handleIncomingCall(fromUsername, offer) {
-    console.log('[CALL] Incoming call from:', fromUsername);
-    
+/* ════════════════════════════════════════════════════════
+   INCOMING CALL
+════════════════════════════════════════════════════════ */
+function handleIncomingCall(from, offer) {
+    console.log('[AUDIO-CALL] Incoming from:', from);
     if (callInProgress) {
-        console.log('[CALL] Call already in progress, rejecting...');
-        getSocket().emit('call-reject', { to: fromUsername });
+        getSocket().emit('call-reject', { to: from });
         return;
     }
-
-    incomingCallFrom = fromUsername;
-    callPartner = fromUsername;
-    incomingCallerNameEl.textContent = fromUsername;
+    incomingCallFrom = from;
+    pendingOffer     = offer;
+    if (incomingCallerEl) incomingCallerEl.textContent = from;
     showIncomingCallUI();
-
-    try {
-        // Store offer for later use
-        window.pendingOffer = offer;
-    } catch (err) {
-        console.error('Error handling incoming call:', err);
-    }
 }
 
-/**
- * Accept incoming call
- */
+/* ════════════════════════════════════════════════════════
+   ACCEPT CALL
+════════════════════════════════════════════════════════ */
 async function acceptCall() {
+    if (!incomingCallFrom || !pendingOffer) return;
+    hideIncomingCallUI();
+
     try {
-        if (!incomingCallFrom || !window.pendingOffer) return;
-
-        console.log('[CALL] Accepting call from:', incomingCallFrom);
-
-        // Get user's microphone
-        localStream = await navigator.mediaDevices.getUserMedia({ 
-            audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true
-            },
-            video: false 
-        });
-
-        // Create peer connection
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         createPeerConnection();
+        localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
 
-        // Add local stream
-        localStream.getTracks().forEach(track => {
-            peerConnection.addTrack(track, localStream);
-        });
-
-        // Set remote description from offer
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(window.pendingOffer));
-
-        // Create and send answer
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(pendingOffer));
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
 
-        getSocket().emit('call-answer', {
-            to: incomingCallFrom,
-            answer: answer
-        });
+        getSocket().emit('call-answer', { to: incomingCallFrom, answer });
 
+        callPartner    = incomingCallFrom;
         callInProgress = true;
-        callPartner = incomingCallFrom;
-        callStartTime = Date.now();
-        hideIncomingCallUI();
-        showCallUI();
-        
-        const callPeerNameEl = document.querySelector('.call-peer-name');
-        if (callPeerNameEl) {
-            callPeerNameEl.textContent = incomingCallFrom;
-        }
-        
-        callStatusEl.textContent = 'Call connected';
-        startCallDuration();
+        pendingOffer   = null;
+        incomingCallFrom = null;
 
-        // Clear pending offer
-        delete window.pendingOffer;
+        showCallUI(callPartner);
+        if (callStatusEl) callStatusEl.textContent = 'Connected';
+        startCallTimer();
+
     } catch (err) {
-        console.error('Error accepting call:', err);
-        alert('Error accepting call: ' + err.message);
+        console.error('[AUDIO-CALL] acceptCall error:', err);
         rejectCall();
     }
 }
 
-/**
- * Reject incoming call
- */
+/* ════════════════════════════════════════════════════════
+   REJECT CALL
+════════════════════════════════════════════════════════ */
 function rejectCall() {
     if (incomingCallFrom) {
-        console.log('[CALL] Rejecting call from:', incomingCallFrom);
-        
-        // Log missed call
-        if (window.logCall) {
-            const me = currentUsername || (typeof nameInputEl !== 'undefined' ? nameInputEl.textContent : 'Unknown');
-            window.logCall({
-                type: 'audio',
-                with: incomingCallFrom,
-                duration: 0,
-                status: 'missed',
-                initiator: incomingCallFrom,
-                receiver: me
-            });
-        }
-        
         getSocket().emit('call-reject', { to: incomingCallFrom });
-        incomingCallFrom = null;
     }
+    incomingCallFrom = null;
+    pendingOffer     = null;
     hideIncomingCallUI();
-    delete window.pendingOffer;
 }
 
-/**
- * Handle answer to our call
- */
-async function handleCallAnswer(fromUsername, answer) {
+/* ════════════════════════════════════════════════════════
+   HANDLE ANSWER (caller receives this)
+════════════════════════════════════════════════════════ */
+async function handleCallAnswer(from, answer) {
+    if (!peerConnection) return;
     try {
-        console.log('[CALL] Call answer received from:', fromUsername);
-        if (!peerConnection) return;
-
         await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-        callInProgress = true;
-        callPartner = fromUsername;
-        callStatusEl.textContent = 'Call connected';
-        callStartTime = Date.now();
-        startCallDuration();
+        if (callStatusEl) callStatusEl.textContent = 'Connected';
+        startCallTimer();
     } catch (err) {
-        console.error('Error handling answer:', err);
+        console.error('[AUDIO-CALL] handleCallAnswer error:', err);
     }
 }
 
-/**
- * Handle ICE candidates
- */
-async function handleIceCandidate(fromUsername, candidate) {
+/* ════════════════════════════════════════════════════════
+   ICE CANDIDATE
+════════════════════════════════════════════════════════ */
+async function handleIceCandidate(from, candidate) {
+    if (!peerConnection) return;
     try {
-        if (!peerConnection) return;
-        
-        if (candidate) {
+        if (peerConnection.remoteDescription) {
             await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
         }
     } catch (err) {
-        console.error('Error adding ice candidate:', err);
+        console.warn('[AUDIO-CALL] ICE error:', err);
     }
 }
 
-/**
- * Create peer connection
- */
-function createPeerConnection() {
-    try {
-        peerConnection = new RTCPeerConnection(iceServers);
-
-        // Handle ICE candidates
-        peerConnection.onicecandidate = (event) => {
-            if (event.candidate && callPartner && getSocket()) {
-                getSocket().emit('ice-candidate', {
-                    to: callPartner,
-                    candidate: event.candidate
-                });
-            }
-        };
-
-        // Handle remote stream
-        peerConnection.ontrack = (event) => {
-            console.log('[CALL] Remote track received:', event.track.kind);
-            if (remoteAudioEl && event.streams[0]) {
-                remoteAudioEl.srcObject = event.streams[0];
-                remoteAudioEl.play().catch(e => console.log('Audio play error:', e));
-            }
-        };
-
-        // Handle connection state changes
-        peerConnection.onconnectionstatechange = () => {
-            console.log('[CALL] Connection state:', peerConnection.connectionState);
-            
-            if (peerConnection.connectionState === 'failed' || 
-                peerConnection.connectionState === 'disconnected') {
-                endCall();
-            }
-        };
-
-        // Handle ICE connection state
-        peerConnection.oniceconnectionstatechange = () => {
-            console.log('[CALL] ICE connection state:', peerConnection.iceConnectionState);
-            
-            if (peerConnection.iceConnectionState === 'failed') {
-                console.error('[CALL] ICE connection failed');
-                endCall();
-            }
-        };
-    } catch (err) {
-        console.error('Error creating peer connection:', err);
-    }
-}
-
-/**
- * End call
- */
+/* ════════════════════════════════════════════════════════
+   END CALL
+════════════════════════════════════════════════════════ */
 function endCall() {
-    console.log('[CALL] Ending call with:', callPartner);
-    
-    // Calculate call duration
-    let duration = 0;
-    if (callStartTime) {
-        duration = Math.floor((Date.now() - callStartTime) / 1000);
-        console.log('[CALL] Call duration:', duration, 'seconds');
-    }
-    
-    // Log the call
-    if (callPartner && window.logCall) {
-        const me = currentUsername || (typeof nameInputEl !== 'undefined' ? nameInputEl.textContent : 'Unknown');
-        window.logCall({
-            type: 'audio',
-            with: callPartner,
-            duration: duration,
-            status: 'completed',
-            initiator: me,
-            receiver: callPartner
-        });
-    }
-    
-    callInProgress = false;
+    const partner = callPartner;
+
+    callInProgress   = false;
+    callPartner      = null;
     incomingCallFrom = null;
-    callStartTime = null;
-    
-    // Stop call duration timer
-    if (callDurationInterval) {
-        clearInterval(callDurationInterval);
-        callDurationInterval = null;
+
+    if (peerConnection) { peerConnection.close(); peerConnection = null; }
+    if (localStream)    { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+
+    if (partner && getSocket()) {
+        getSocket().emit('call-end', { to: partner });
     }
 
-    // Close peer connection
-    if (peerConnection) {
-        peerConnection.close();
-        peerConnection = null;
-    }
-
-    // Stop local stream
-    if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-        localStream = null;
-    }
-
-    // Clear audio elements
-    if (localAudioEl) localAudioEl.srcObject = null;
-    if (remoteAudioEl) remoteAudioEl.srcObject = null;
-
-    // Hide call UI
+    stopCallTimer();
     hideCallUI();
     hideIncomingCallUI();
 
-    // Notify other user
-    if (callPartner && getSocket()) {
-        getSocket().emit('call-end', { to: callPartner });
+    // Log the call if logger available
+    if (partner && callStartTime && window.logCall) {
+        const duration = Math.floor((Date.now() - callStartTime) / 1000);
+        window.logCall({ type: 'audio', partner, duration, timestamp: callStartTime });
     }
-
-    callPartner = null;
-    delete window.pendingOffer;
+    callStartTime = null;
 }
 
-/**
- * Handle call rejection
- */
-function handleCallRejection(fromUsername) {
-    console.log('[CALL] Call rejected by:', fromUsername);
-    if (callStatusEl) {
-        callStatusEl.textContent = 'Call rejected by ' + fromUsername;
-    }
-    setTimeout(() => {
-        endCall();
-    }, 1500);
-}
+/* ════════════════════════════════════════════════════════
+   PEER CONNECTION
+════════════════════════════════════════════════════════ */
+function createPeerConnection() {
+    peerConnection = new RTCPeerConnection(ICE_CONFIG);
 
-/**
- * Handle call end from other user
- */
-function handleCallEnd() {
-    console.log('[CALL] Call ended by other user');
-    if (callStatusEl) {
-        callStatusEl.textContent = 'Call ended';
-    }
-    setTimeout(() => {
-        endCall();
-    }, 500);
-}
-
-/**
- * Start call duration timer
- */
-function startCallDuration() {
-    callStartTime = Date.now();
-    callDurationInterval = setInterval(() => {
-        if (callDurationEl) {
-            const duration = Math.floor((Date.now() - callStartTime) / 1000);
-            const mins = Math.floor(duration / 60);
-            const secs = duration % 60;
-            callDurationEl.textContent = 
-                (mins < 10 ? '0' + mins : mins) + ':' + 
-                (secs < 10 ? '0' + secs : secs);
+    peerConnection.onicecandidate = e => {
+        if (e.candidate && callPartner) {
+            getSocket().emit('ice-candidate', { to: callPartner, candidate: e.candidate });
         }
+    };
+
+    peerConnection.ontrack = e => {
+        if (remoteAudioEl) {
+            remoteAudioEl.srcObject = e.streams[0];
+            remoteAudioEl.play().catch(() => {});
+        }
+    };
+
+    peerConnection.onconnectionstatechange = () => {
+        const state = peerConnection.connectionState;
+        console.log('[AUDIO-CALL] Connection state:', state);
+        if (state === 'disconnected' || state === 'failed') endCall();
+    };
+}
+
+/* ════════════════════════════════════════════════════════
+   CALL TIMER
+════════════════════════════════════════════════════════ */
+function startCallTimer() {
+    callStartTime = Date.now();
+    if (callDurationEl) callDurationEl.textContent = '00:00';
+    callDurationInterval = setInterval(() => {
+        if (!callStartTime || !callDurationEl) return;
+        const s = Math.floor((Date.now() - callStartTime) / 1000);
+        callDurationEl.textContent =
+            String(Math.floor(s / 60)).padStart(2,'0') + ':' + String(s % 60).padStart(2,'0');
     }, 1000);
 }
 
-/**
- * Show call UI
- */
-function showCallUI() {
-    console.log('[CALL] Showing call UI');
-    if (callModal) {
-        callModal.style.display = 'flex';
-        if (callStatusEl) callStatusEl.textContent = 'Initializing...';
-        if (callDurationEl) callDurationEl.textContent = '00:00';
-    }
+function stopCallTimer() {
+    clearInterval(callDurationInterval);
+    callDurationInterval = null;
 }
 
-/**
- * Hide call UI
- */
+/* ════════════════════════════════════════════════════════
+   UI
+════════════════════════════════════════════════════════ */
+function showCallUI(username) {
+    if (callPeerNameEl) callPeerNameEl.textContent = username || callPartner;
+    if (callDurationEl) callDurationEl.textContent = '00:00';
+    if (callModal) callModal.style.display = 'flex';
+}
 function hideCallUI() {
-    console.log('[CALL] Hiding call UI');
-    if (callModal) {
-        callModal.style.display = 'none';
-    }
+    if (callModal) callModal.style.display = 'none';
 }
-
-/**
- * Show incoming call UI
- */
 function showIncomingCallUI() {
-    console.log('[CALL] Showing incoming call UI');
-    if (incomingCallModal) {
-        incomingCallModal.style.display = 'flex';
-        // Play ringtone
-        playRingtone();
-    }
+    if (incomingCallModal) incomingCallModal.style.display = 'flex';
+    playRingtone();
 }
-
-/**
- * Hide incoming call UI
- */
 function hideIncomingCallUI() {
-    console.log('[CALL] Hiding incoming call UI');
-    if (incomingCallModal) {
-        incomingCallModal.style.display = 'none';
-        stopRingtone();
-    }
+    if (incomingCallModal) incomingCallModal.style.display = 'none';
+    stopRingtone();
 }
 
-/**
- * Play ringtone sound
- */
+/* ════════════════════════════════════════════════════════
+   RINGTONE (simple beep fallback if file missing)
+════════════════════════════════════════════════════════ */
 function playRingtone() {
-    try {
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-
-        oscillator.frequency.value = 440; // A4 note
-        oscillator.type = 'sine';
-
-        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-
-        oscillator.start(audioContext.currentTime);
-        oscillator.stop(audioContext.currentTime + 0.5);
-
-        // Repeat ringtone
-        window.ringtoneTimeout = setTimeout(playRingtone, 600);
-    } catch (err) {
-        console.log('Error playing ringtone:', err);
-    }
+    stopRingtone();
+    const tryPlay = () => {
+        try {
+            const audio = new Audio('/sounds/ringtone.mp3');
+            audio.volume = 0.5;
+            audio.play().catch(() => {});
+        } catch {}
+    };
+    tryPlay();
+    ringtoneInterval = setInterval(tryPlay, 3000);
 }
-
-/**
- * Stop ringtone
- */
 function stopRingtone() {
-    if (window.ringtoneTimeout) {
-        clearTimeout(window.ringtoneTimeout);
-        window.ringtoneTimeout = null;
-    }
+    clearInterval(ringtoneInterval);
+    ringtoneInterval = null;
 }
 
-/**
- * Toggle local audio mute
- */
+/* ════════════════════════════════════════════════════════
+   TOGGLE MUTE
+════════════════════════════════════════════════════════ */
 function toggleLocalAudio() {
-    if (!localStream) {
-        console.log('[CALL] No active call to toggle audio');
-        return;
+    if (!localStream) return;
+    const track = localStream.getAudioTracks()[0];
+    if (!track) return;
+    track.enabled = !track.enabled;
+    const btn = document.getElementById('mute-audio-btn');
+    if (btn) {
+        btn.textContent = track.enabled ? '🎤' : '🔇';
+        btn.style.opacity = track.enabled ? '1' : '0.5';
     }
-    
-    const audioTracks = localStream.getAudioTracks();
-    const isCurrentlyMuted = audioTracks.some(track => !track.enabled);
-    
-    audioTracks.forEach(track => {
-        track.enabled = isCurrentlyMuted; // Toggle: if muted, enable; if enabled, mute
-    });
-    
-    const muteBtn = document.getElementById('mute-audio-btn');
-    if (muteBtn) {
-        if (isCurrentlyMuted) {
-            muteBtn.style.opacity = '1';
-            muteBtn.title = 'Mute audio';
-            muteBtn.textContent = '🎤';
-        } else {
-            muteBtn.style.opacity = '0.5';
-            muteBtn.title = 'Unmute audio';
-            muteBtn.textContent = '🔇';
-        }
-    }
-    
-    console.log('[CALL] Audio', isCurrentlyMuted ? 'enabled' : 'muted');
 }
 
-// Export functions for global use
-console.log('[AUDIO-CALL-MODULE] Exporting functions...');
-window.initiateAudioCall = initiateAudioCall;
-window.acceptCall = acceptCall;
-window.rejectCall = rejectCall;
-window.endCall = endCall;
-window.toggleLocalAudio = toggleLocalAudio;
-console.log('[AUDIO-CALL-MODULE] ✓ Loaded successfully');
+/* ════════════════════════════════════════════════════════
+   CALL EVENTS FROM PEER
+════════════════════════════════════════════════════════ */
+function handleCallRejection(from) {
+    if (callStatusEl) callStatusEl.textContent = 'Call declined';
+    setTimeout(endCall, 1500);
+}
+function handleCallEnd() {
+    if (callStatusEl) callStatusEl.textContent = 'Call ended';
+    setTimeout(endCall, 500);
+}
+
+/* ════════════════════════════════════════════════════════
+   BUTTON WIRING
+════════════════════════════════════════════════════════ */
+(function wireButtons() {
+    const wire = (id, fn) => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('click', fn);
+    };
+    wire('accept-call-btn',  () => acceptCall());
+    wire('reject-call-btn',  () => rejectCall());
+    wire('call-end-btn',     () => endCall());
+    wire('mute-audio-btn',   () => toggleLocalAudio());
+})();
+
+/* ════════════════════════════════════════════════════════
+   EXPORTS
+════════════════════════════════════════════════════════ */
+window.initiateAudioCall    = initiateAudioCall;
+window.acceptCall           = acceptCall;
+window.rejectCall           = rejectCall;
+window.endCall              = endCall;
+window.toggleLocalAudio     = toggleLocalAudio;
+window.handleIncomingCall   = handleIncomingCall;
+window.handleCallAnswer     = handleCallAnswer;
+window.handleIceCandidate   = handleIceCandidate;
+window.handleCallRejection  = handleCallRejection;
+window.handleCallEnd        = handleCallEnd;
+
+console.log('[AUDIO-CALL] ✓ Module loaded');

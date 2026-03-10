@@ -1,287 +1,208 @@
-// ═════════════════════════════════════════════════════════════════
-// VIDEO CALL MODULE - Fresh Implementation
-// ═════════════════════════════════════════════════════════════════
+/**
+ * video-call.js — NexChat Video Call Module
+ * WebRTC P2P video calls via Socket.IO signaling
+ */
 
 console.log('[VIDEO-CALL] Module loading...');
 
-let videoPeerConnection = null;
-let videoCallPartner = null;
-let videoCallStartTime = null;
-let localVideoStream = null;
-let localScreenStream = null;
-let isScreenSharing = false;
+/* ─── socket helper ─────────────────────────────────── */
+function getSocket() { return window.socket; }
+function getMe()     { return window.currentUsername || ''; }
 
-const videoCallModal = document.getElementById('video-call-modal');
-const incomingVideoCallModal = document.getElementById('incoming-video-call-modal');
-const localVideoEl = document.getElementById('local-video');
-const remoteVideoEl = document.getElementById('remote-video');
-const videoDurationEl = document.getElementById('video-call-duration');
-const videoStatusEl = document.getElementById('video-call-status');
-const toggleAudioBtn = document.getElementById('toggle-audio-btn');
-const toggleVideoBtn = document.getElementById('toggle-video-btn');
-const shareScreenBtn = document.getElementById('share-screen-btn');
+/* ─── state ─────────────────────────────────────────── */
+let videoPeerConnection  = null;
+let localVideoStream     = null;
+let localScreenStream    = null;
+let remoteVideoStream    = null;
+let remoteAudioStream    = null;
+let videoCallPartner     = null;
+let videoCallStartTime   = null;
+let videoDurationInterval = null;
+let pendingVideoOffer    = null;
+let isScreenSharing      = false;
 
-let pendingVideoOffer = null;
+/* ─── DOM ────────────────────────────────────────────── */
+const videoCallModal        = document.getElementById('video-call-modal');
+const incomingVideoModal    = document.getElementById('incoming-video-call-modal');
+const localVideoEl          = document.getElementById('local-video');
+const remoteVideoEl         = document.getElementById('remote-video');
+// Use separate element to avoid conflict with audio call's remote-audio-call
+const remoteAudioVideoEl    = document.getElementById('remote-audio-video');
+const videoDurationEl       = document.getElementById('video-call-duration');
+const videoStatusEl         = document.getElementById('video-call-status');
 
-// Helper to safely get socket
-function getSocket() {
-    return window.socket;
-}
+/* ─── ICE servers ───────────────────────────────────── */
+const ICE_CONFIG = {
+    iceServers: [
+        { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }
+    ]
+};
 
-// ═════════════════════════════════════════════════════════════════
-// INITIATE VIDEO CALL
-// ═════════════════════════════════════════════════════════════════
+/* ════════════════════════════════════════════════════════
+   INITIATE VIDEO CALL
+════════════════════════════════════════════════════════ */
 async function initiateVideoCall(recipientUsername) {
-    console.log('[VIDEO-CALL] Initiating video call with:', recipientUsername);
-    
-    if (videoPeerConnection) {
-        alert('Already in a call');
-        return;
-    }
+    if (videoPeerConnection) { alert('Already in a video call'); return; }
+
+    const socket = getSocket();
+    if (!socket || !socket.connected) { alert('Socket not connected'); return; }
 
     videoCallPartner = recipientUsername;
-    
+
     try {
-        // Get camera permission
         localVideoStream = await navigator.mediaDevices.getUserMedia({
-            video: { width: { min: 640, ideal: 1280, max: 1920 }, height: { min: 480, ideal: 720, max: 1080 } },
+            video: { width: {ideal:1280}, height: {ideal:720} },
             audio: true
         });
 
-        console.log('[VIDEO-CALL] Got local stream:', localVideoStream.id);
-        console.log('[VIDEO-CALL] Video tracks:', localVideoStream.getVideoTracks().length);
-        console.log('[VIDEO-CALL] Audio tracks:', localVideoStream.getAudioTracks().length);
+        if (localVideoEl) localVideoEl.srcObject = localVideoStream;
 
-        // Show local video
-        if (localVideoEl) {
-            console.log('[VIDEO-CALL] Setting local video element srcObject');
-            localVideoEl.srcObject = localVideoStream;
-        } else {
-            console.error('[VIDEO-CALL] Local video element not found');
-        }
-
-        // Create peer connection
         videoPeerConnection = createVideoPeerConnection();
+        localVideoStream.getTracks().forEach(t =>
+            videoPeerConnection.addTrack(t, localVideoStream)
+        );
 
-        // Add tracks to connection
-        localVideoStream.getTracks().forEach(track => {
-            console.log('[VIDEO-CALL] Adding track to peer connection:', track.kind, track.id);
-            videoPeerConnection.addTrack(track, localVideoStream);
-        });
-
-        // Create offer
         const offer = await videoPeerConnection.createOffer({
-            offerToReceiveAudio: true,
-            offerToReceiveVideo: true
+            offerToReceiveAudio: true, offerToReceiveVideo: true
         });
-
         await videoPeerConnection.setLocalDescription(offer);
 
-        // Send offer to peer
-        getSocket().emit('video-call-initiate', {
-            from: currentUsername,
-            to: recipientUsername,
-            offer: offer
+        socket.emit('video-call-initiate', {
+            from: getMe(), to: recipientUsername, offer
         });
 
-        // Show video call modal
-        videoCallModal.style.display = 'flex';
-        const peerNameEl = document.getElementById('video-call-peer-name');
-        if (peerNameEl) {
-            peerNameEl.textContent = recipientUsername;
-        }
-        videoStatusEl.textContent = 'Calling...';
-        videoCallStartTime = Date.now();
-
-        // Start duration timer
+        showVideoCallUI(recipientUsername);
+        if (videoStatusEl) videoStatusEl.textContent = 'Calling…';
         startVideoDurationTimer();
 
-    } catch(err) {
-        console.error('[VIDEO-CALL] Error initiating call:', err);
-        alert('Error accessing camera: ' + err.message);
+    } catch (err) {
+        console.error('[VIDEO-CALL] initiateVideoCall error:', err);
+        alert('Camera/mic error: ' + err.message);
         cleanupVideoCall();
     }
 }
 
-// ═════════════════════════════════════════════════════════════════
-// HANDLE INCOMING VIDEO CALL
-// ═════════════════════════════════════════════════════════════════
-async function handleIncomingVideoCall(data) {
-    console.log('[VIDEO-CALL] Incoming video call from:', data.from);
-    
+/* ════════════════════════════════════════════════════════
+   INCOMING VIDEO CALL
+════════════════════════════════════════════════════════ */
+function handleIncomingVideoCall(data) {
+    console.log('[VIDEO-CALL] Incoming from:', data.from);
     videoCallPartner = data.from;
     pendingVideoOffer = data.offer;
-
-    // Show incoming call modal
-    document.getElementById('incoming-video-caller-name').textContent = data.from;
-    incomingVideoCallModal.style.display = 'flex';
+    const el = document.getElementById('incoming-video-caller-name');
+    if (el) el.textContent = data.from;
+    if (incomingVideoModal) incomingVideoModal.style.display = 'flex';
 }
 
-// ═════════════════════════════════════════════════════════════════
-// REJECT VIDEO CALL
-// ═════════════════════════════════════════════════════════════════
+/* ════════════════════════════════════════════════════════
+   REJECT VIDEO CALL
+════════════════════════════════════════════════════════ */
 function rejectVideoCall() {
-    console.log('[VIDEO-CALL] Rejecting video call from:', videoCallPartner);
-    
     if (videoCallPartner) {
-        getSocket().emit('video-call-reject', {
-            from: currentUsername,
-            to: videoCallPartner
-        });
+        getSocket().emit('video-call-reject', { from: getMe(), to: videoCallPartner });
     }
-
-    incomingVideoCallModal.style.display = 'none';
+    if (incomingVideoModal) incomingVideoModal.style.display = 'none';
     pendingVideoOffer = null;
-    videoCallPartner = null;
+    videoCallPartner  = null;
 }
 
-// ═════════════════════════════════════════════════════════════════
-// ACCEPT VIDEO CALL
-// ═════════════════════════════════════════════════════════════════
+/* ════════════════════════════════════════════════════════
+   ACCEPT VIDEO CALL
+════════════════════════════════════════════════════════ */
 async function acceptVideoCall() {
-    console.log('[VIDEO-CALL] Accepting video call from:', videoCallPartner);
-    
-    incomingVideoCallModal.style.display = 'none';
-
-    if (!pendingVideoOffer) {
-        alert('No pending offer');
-        return;
-    }
+    if (!pendingVideoOffer) return;
+    if (incomingVideoModal) incomingVideoModal.style.display = 'none';
 
     try {
-        // Get camera permission
         localVideoStream = await navigator.mediaDevices.getUserMedia({
-            video: { width: { min: 640, ideal: 1280, max: 1920 }, height: { min: 480, ideal: 720, max: 1080 } },
+            video: { width: {ideal:1280}, height: {ideal:720} },
             audio: true
         });
 
-        console.log('[VIDEO-CALL] Got local stream:', localVideoStream.id);
-        console.log('[VIDEO-CALL] Video tracks:', localVideoStream.getVideoTracks().length);
-        console.log('[VIDEO-CALL] Audio tracks:', localVideoStream.getAudioTracks().length);
+        if (localVideoEl) localVideoEl.srcObject = localVideoStream;
 
-        // Show local video
-        if (localVideoEl) {
-            console.log('[VIDEO-CALL] Setting local video element srcObject');
-            localVideoEl.srcObject = localVideoStream;
-        } else {
-            console.error('[VIDEO-CALL] Local video element not found');
-        }
-
-        // Create peer connection
         videoPeerConnection = createVideoPeerConnection();
+        localVideoStream.getTracks().forEach(t =>
+            videoPeerConnection.addTrack(t, localVideoStream)
+        );
 
-        // Add tracks
-        localVideoStream.getTracks().forEach(track => {
-            console.log('[VIDEO-CALL] Adding track to peer connection:', track.kind, track.id);
-            videoPeerConnection.addTrack(track, localVideoStream);
-        });
-
-        // Set remote description
-        await videoPeerConnection.setRemoteDescription(new RTCSessionDescription(pendingVideoOffer));
-
-        // Create answer
+        await videoPeerConnection.setRemoteDescription(
+            new RTCSessionDescription(pendingVideoOffer)
+        );
         const answer = await videoPeerConnection.createAnswer({
-            offerToReceiveAudio: true,
-            offerToReceiveVideo: true
+            offerToReceiveAudio: true, offerToReceiveVideo: true
         });
-
         await videoPeerConnection.setLocalDescription(answer);
 
-        // Send answer
         getSocket().emit('video-call-answer', {
-            from: currentUsername,
-            to: videoCallPartner,
-            answer: answer
+            from: getMe(), to: videoCallPartner, answer
         });
-
-        // Show video call modal
-        videoCallModal.style.display = 'flex';
-        const peerNameEl = document.getElementById('video-call-peer-name');
-        if (peerNameEl) {
-            peerNameEl.textContent = videoCallPartner;
-        }
-        videoStatusEl.textContent = 'Connected';
-        videoCallStartTime = Date.now();
-
-        // Start duration timer
-        startVideoDurationTimer();
 
         pendingVideoOffer = null;
 
-    } catch(err) {
-        console.error('[VIDEO-CALL] Error accepting call:', err);
-        alert('Error accepting call: ' + err.message);
+        showVideoCallUI(videoCallPartner);
+        if (videoStatusEl) videoStatusEl.textContent = 'Connected';
+        videoCallStartTime = Date.now();
+        startVideoDurationTimer();
+
+    } catch (err) {
+        console.error('[VIDEO-CALL] acceptVideoCall error:', err);
+        alert('Error accepting video call: ' + err.message);
         cleanupVideoCall();
     }
 }
 
-// ═════════════════════════════════════════════════════════════════
-// HANDLE VIDEO CALL ANSWER
-// ═════════════════════════════════════════════════════════════════
+/* ════════════════════════════════════════════════════════
+   HANDLE ANSWER
+════════════════════════════════════════════════════════ */
 async function handleVideoCallAnswer(data) {
-    console.log('[VIDEO-CALL] Received answer from:', data.from);
-    
-    if (videoPeerConnection) {
-        try {
-            await videoPeerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-            videoStatusEl.textContent = 'Connected';
-        } catch(err) {
-            console.error('[VIDEO-CALL] Error setting remote description:', err);
-        }
+    if (!videoPeerConnection) return;
+    try {
+        await videoPeerConnection.setRemoteDescription(
+            new RTCSessionDescription(data.answer)
+        );
+        if (videoStatusEl) videoStatusEl.textContent = 'Connected';
+        videoCallStartTime = Date.now();
+    } catch (err) {
+        console.error('[VIDEO-CALL] handleVideoCallAnswer error:', err);
     }
 }
 
-// ═════════════════════════════════════════════════════════════════
-// CREATE VIDEO PEER CONNECTION
-// ═════════════════════════════════════════════════════════════════
+/* ════════════════════════════════════════════════════════
+   CREATE PEER CONNECTION
+════════════════════════════════════════════════════════ */
 function createVideoPeerConnection() {
-    console.log('[VIDEO-CALL] Creating peer connection');
-    
-    const pc = new RTCPeerConnection({
-        iceServers: [
-            { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }
-        ]
-    });
+    const pc = new RTCPeerConnection(ICE_CONFIG);
 
-    // Handle ICE candidates
-    pc.onicecandidate = (event) => {
-        if (event.candidate && videoCallPartner) {
-            console.log('[VIDEO-CALL] Sending ICE candidate');
+    pc.onicecandidate = e => {
+        if (e.candidate && videoCallPartner) {
             getSocket().emit('video-call-ice', {
-                from: currentUsername,
-                to: videoCallPartner,
-                candidate: event.candidate
+                from: getMe(), to: videoCallPartner, candidate: e.candidate
             });
         }
     };
 
-    // Handle remote tracks
-    pc.ontrack = (event) => {
-        console.log('[VIDEO-CALL] Received remote track:', event.track.kind, 'Stream:', event.streams.length);
-        
-        if (event.track.kind === 'video') {
-            if (remoteVideoEl) {
-                console.log('[VIDEO-CALL] Setting remote video srcObject');
-                remoteVideoEl.srcObject = event.streams[0];
-            } else {
-                console.error('[VIDEO-CALL] Remote video element not found');
-            }
-        } else if (event.track.kind === 'audio') {
-            const remoteAudioEl = document.getElementById('remote-audio');
-            if (remoteAudioEl) {
-                console.log('[VIDEO-CALL] Setting remote audio srcObject');
-                remoteAudioEl.srcObject = event.streams[0];
-            } else {
-                console.error('[VIDEO-CALL] Remote audio element not found');
+    pc.ontrack = e => {
+        const kind = e.track.kind;
+        console.log('[VIDEO-CALL] Remote track received:', kind);
+
+        if (kind === 'video') {
+            if (!remoteVideoStream) remoteVideoStream = new MediaStream();
+            remoteVideoStream.addTrack(e.track);
+            if (remoteVideoEl) remoteVideoEl.srcObject = remoteVideoStream;
+        } else if (kind === 'audio') {
+            if (!remoteAudioStream) remoteAudioStream = new MediaStream();
+            remoteAudioStream.addTrack(e.track);
+            if (remoteAudioVideoEl) {
+                remoteAudioVideoEl.srcObject = remoteAudioStream;
+                remoteAudioVideoEl.play().catch(() => {});
             }
         }
     };
 
-    // Handle connection state changes
     pc.onconnectionstatechange = () => {
         console.log('[VIDEO-CALL] Connection state:', pc.connectionState);
         if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-            console.log('[VIDEO-CALL] Connection lost');
             endVideoCall();
         }
     };
@@ -289,271 +210,206 @@ function createVideoPeerConnection() {
     return pc;
 }
 
-// ═════════════════════════════════════════════════════════════════
-// HANDLE VIDEO CALL ICE
-// ═════════════════════════════════════════════════════════════════
+/* ════════════════════════════════════════════════════════
+   HANDLE ICE
+════════════════════════════════════════════════════════ */
 async function handleVideoCallIce(data) {
-    if (videoPeerConnection) {
-        try {
+    if (!videoPeerConnection) return;
+    try {
+        if (videoPeerConnection.remoteDescription) {
             await videoPeerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-        } catch(err) {
-            console.error('[VIDEO-CALL] Error adding ICE candidate:', err);
         }
+    } catch (err) {
+        console.warn('[VIDEO-CALL] ICE error:', err);
     }
 }
 
-// ═════════════════════════════════════════════════════════════════
-// END VIDEO CALL
-// ═════════════════════════════════════════════════════════════════
+/* ════════════════════════════════════════════════════════
+   END VIDEO CALL
+════════════════════════════════════════════════════════ */
 function endVideoCall() {
-    console.log('[VIDEO-CALL] Ending video call');
-    
-    // Log the call
-    if (videoCallPartner && videoCallStartTime) {
-        const duration = Math.floor((Date.now() - videoCallStartTime) / 1000);
-        if (window.logCall) {
-            window.logCall({
-                type: 'video',
-                partner: videoCallPartner,
-                duration: duration,
-                timestamp: Date.now()
-            });
-        }
+    if (videoCallPartner) {
+        getSocket().emit('video-call-end', { from: getMe(), to: videoCallPartner });
     }
 
-    // Notify peer
-    if (videoCallPartner) {
-        getSocket().emit('video-call-end', {
-            from: currentUsername,
-            to: videoCallPartner
-        });
+    // Log call
+    if (videoCallPartner && videoCallStartTime && window.logCall) {
+        const duration = Math.floor((Date.now() - videoCallStartTime) / 1000);
+        window.logCall({ type: 'video', partner: videoCallPartner, duration, timestamp: videoCallStartTime });
     }
 
     cleanupVideoCall();
 }
 
-// ═════════════════════════════════════════════════════════════════
-// HANDLE VIDEO CALL END
-// ═════════════════════════════════════════════════════════════════
 function handleVideoCallEnd() {
     console.log('[VIDEO-CALL] Call ended by peer');
     cleanupVideoCall();
 }
 
-// ═════════════════════════════════════════════════════════════════
-// CLEANUP VIDEO CALL
-// ═════════════════════════════════════════════════════════════════
+/* ════════════════════════════════════════════════════════
+   CLEANUP
+════════════════════════════════════════════════════════ */
 function cleanupVideoCall() {
-    console.log('[VIDEO-CALL] Cleaning up');
-    
-    // Stop all tracks
-    if (localVideoStream) {
-        localVideoStream.getTracks().forEach(track => track.stop());
-        localVideoStream = null;
-    }
-
-    if (localScreenStream) {
-        localScreenStream.getTracks().forEach(track => track.stop());
-        localScreenStream = null;
-    }
+    // Stop tracks
+    [localVideoStream, localScreenStream, remoteVideoStream, remoteAudioStream].forEach(stream => {
+        if (stream) stream.getTracks().forEach(t => t.stop());
+    });
+    localVideoStream = localScreenStream = remoteVideoStream = remoteAudioStream = null;
 
     // Close peer connection
-    if (videoPeerConnection) {
-        videoPeerConnection.close();
-        videoPeerConnection = null;
-    }
+    if (videoPeerConnection) { videoPeerConnection.close(); videoPeerConnection = null; }
 
-    // Clear video elements
-    if (localVideoEl) {
-        localVideoEl.srcObject = null;
-    }
-    if (remoteVideoEl) {
-        remoteVideoEl.srcObject = null;
-    }
-    const remoteAudioEl = document.getElementById('remote-audio');
-    if (remoteAudioEl) {
-        remoteAudioEl.srcObject = null;
-    }
+    // Clear elements
+    if (localVideoEl)       localVideoEl.srcObject   = null;
+    if (remoteVideoEl)      remoteVideoEl.srcObject  = null;
+    if (remoteAudioVideoEl) remoteAudioVideoEl.srcObject = null;
 
     // Hide modals
-    videoCallModal.style.display = 'none';
-    incomingVideoCallModal.style.display = 'none';
+    if (videoCallModal)   videoCallModal.style.display   = 'none';
+    if (incomingVideoModal) incomingVideoModal.style.display = 'none';
 
-    // Stop duration timer
     stopVideoDurationTimer();
 
-    // Reset state
-    videoCallPartner = null;
+    videoCallPartner   = null;
     videoCallStartTime = null;
-    isScreenSharing = false;
-    pendingVideoOffer = null;
+    pendingVideoOffer  = null;
+    isScreenSharing    = false;
 }
 
-// ═════════════════════════════════════════════════════════════════
-// TOGGLE LOCAL VIDEO
-// ═════════════════════════════════════════════════════════════════
+/* ════════════════════════════════════════════════════════
+   TOGGLE LOCAL VIDEO
+════════════════════════════════════════════════════════ */
 function toggleLocalVideo() {
     if (!localVideoStream) return;
-
-    const videoTrack = localVideoStream.getVideoTracks()[0];
-    if (videoTrack) {
-        videoTrack.enabled = !videoTrack.enabled;
-        if (toggleVideoBtn) {
-            toggleVideoBtn.style.opacity = videoTrack.enabled ? '1' : '0.5';
-        }
-        console.log('[VIDEO-CALL] Video:', videoTrack.enabled ? 'ON' : 'OFF');
-    }
+    const track = localVideoStream.getVideoTracks()[0];
+    if (!track) return;
+    track.enabled = !track.enabled;
+    const btn = document.getElementById('toggle-video-btn');
+    if (btn) btn.style.opacity = track.enabled ? '1' : '0.5';
 }
 
-// ═════════════════════════════════════════════════════════════════
-// TOGGLE LOCAL AUDIO
-// ═════════════════════════════════════════════════════════════════
-function toggleLocalAudio() {
+/* ════════════════════════════════════════════════════════
+   TOGGLE LOCAL AUDIO (video call)
+════════════════════════════════════════════════════════ */
+function toggleVideoCallAudio() {
     if (!localVideoStream) return;
-
-    const audioTrack = localVideoStream.getAudioTracks()[0];
-    if (audioTrack) {
-        audioTrack.enabled = !audioTrack.enabled;
-        if (toggleAudioBtn) {
-            toggleAudioBtn.style.opacity = audioTrack.enabled ? '1' : '0.5';
-        }
-        console.log('[VIDEO-CALL] Audio:', audioTrack.enabled ? 'ON' : 'OFF');
-    }
+    const track = localVideoStream.getAudioTracks()[0];
+    if (!track) return;
+    track.enabled = !track.enabled;
+    const btn = document.getElementById('toggle-audio-btn');
+    if (btn) btn.style.opacity = track.enabled ? '1' : '0.5';
 }
 
-// ═════════════════════════════════════════════════════════════════
-// TOGGLE SCREEN SHARE
-// ═════════════════════════════════════════════════════════════════
+/* ════════════════════════════════════════════════════════
+   SCREEN SHARE
+════════════════════════════════════════════════════════ */
 async function toggleScreenShare() {
-    if (!videoPeerConnection) {
-        console.log('[VIDEO-CALL] No active connection for screen share');
-        return;
-    }
+    if (!videoPeerConnection) return;
+    const btn = document.getElementById('share-screen-btn');
 
-    try {
-        if (!isScreenSharing) {
-            // Start screen share
-            console.log('[VIDEO-CALL] Starting screen share');
-            
+    if (!isScreenSharing) {
+        try {
             localScreenStream = await navigator.mediaDevices.getDisplayMedia({
-                video: { cursor: 'always' },
-                audio: false
+                video: {cursor:'always'}, audio: false
             });
-
             const screenTrack = localScreenStream.getVideoTracks()[0];
+            const sender = videoPeerConnection.getSenders().find(s => s.track?.kind === 'video');
+            if (sender) await sender.replaceTrack(screenTrack);
 
-            // Get current video sender
-            const sender = videoPeerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
-            
-            if (sender) {
-                await sender.replaceTrack(screenTrack);
-            }
-
-            // Update UI
             isScreenSharing = true;
-            if (shareScreenBtn) {
-                shareScreenBtn.style.background = '#4CAF50';
-                shareScreenBtn.style.color = 'white';
-            }
+            if (btn) { btn.style.background = '#22c55e'; }
 
-            // Handle screen share stop
-            screenTrack.onended = async () => {
-                console.log('[VIDEO-CALL] Screen share stopped by user');
-                await toggleScreenShare();
-            };
+            screenTrack.onended = () => toggleScreenShare();
 
-        } else {
-            // Stop screen share - switch back to camera
-            console.log('[VIDEO-CALL] Stopping screen share, switching back to camera');
-            
-            if (localScreenStream) {
-                localScreenStream.getTracks().forEach(track => track.stop());
-            }
+        } catch (err) {
+            if (err.name !== 'NotAllowedError') alert('Screen share error: ' + err.message);
+        }
+    } else {
+        if (localScreenStream) { localScreenStream.getTracks().forEach(t => t.stop()); localScreenStream = null; }
 
+        try {
             const cameraStream = await navigator.mediaDevices.getUserMedia({
-                video: { width: { min: 640, ideal: 1280, max: 1920 }, height: { min: 480, ideal: 720, max: 1080 } },
-                audio: false
+                video: {width:{ideal:1280},height:{ideal:720}}, audio: false
             });
-
             const cameraTrack = cameraStream.getVideoTracks()[0];
-            const sender = videoPeerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
-            
-            if (sender) {
-                await sender.replaceTrack(cameraTrack);
-            }
+            const sender = videoPeerConnection.getSenders().find(s => s.track?.kind === 'video');
+            if (sender) await sender.replaceTrack(cameraTrack);
 
-            // Update video stream with camera track
+            // Update local stream
             if (localVideoStream) {
-                const oldVideoTrack = localVideoStream.getVideoTracks()[0];
-                if (oldVideoTrack) {
-                    localVideoStream.removeTrack(oldVideoTrack);
-                    oldVideoTrack.stop();
-                }
+                const old = localVideoStream.getVideoTracks()[0];
+                if (old) { localVideoStream.removeTrack(old); old.stop(); }
                 localVideoStream.addTrack(cameraTrack);
+                if (localVideoEl) localVideoEl.srcObject = localVideoStream;
             }
-
-            // Update local video element
-            if (localVideoEl) {
-                localVideoEl.srcObject = localVideoStream;
-            }
-
-            // Update UI
-            isScreenSharing = false;
-            if (shareScreenBtn) {
-                shareScreenBtn.style.background = '';
-                shareScreenBtn.style.color = '';
-            }
+        } catch (err) {
+            console.warn('[VIDEO-CALL] Could not re-acquire camera:', err);
         }
 
-    } catch(err) {
-        console.error('[VIDEO-CALL] Error toggling screen share:', err);
-        if (err.name !== 'NotAllowedError') {
-            alert('Error: ' + err.message);
-        }
+        isScreenSharing = false;
+        if (btn) btn.style.background = '';
     }
 }
 
-// ═════════════════════════════════════════════════════════════════
-// DURATION TIMER
-// ═════════════════════════════════════════════════════════════════
-let videoDurationInterval = null;
-
+/* ════════════════════════════════════════════════════════
+   DURATION TIMER
+════════════════════════════════════════════════════════ */
 function startVideoDurationTimer() {
-    if (videoDurationInterval) clearInterval(videoDurationInterval);
-    
+    stopVideoDurationTimer();
+    if (!videoCallStartTime) videoCallStartTime = Date.now();
     videoDurationInterval = setInterval(() => {
-        if (videoCallStartTime && videoDurationEl) {
-            const seconds = Math.floor((Date.now() - videoCallStartTime) / 1000);
-            const mins = Math.floor(seconds / 60);
-            const secs = seconds % 60;
-            videoDurationEl.textContent = 
-                String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0');
-        }
+        if (!videoCallStartTime || !videoDurationEl) return;
+        const s = Math.floor((Date.now() - videoCallStartTime) / 1000);
+        videoDurationEl.textContent =
+            String(Math.floor(s / 60)).padStart(2,'0') + ':' + String(s % 60).padStart(2,'0');
     }, 1000);
 }
 
 function stopVideoDurationTimer() {
-    if (videoDurationInterval) {
-        clearInterval(videoDurationInterval);
-        videoDurationInterval = null;
-    }
+    clearInterval(videoDurationInterval);
+    videoDurationInterval = null;
 }
 
-// ═════════════════════════════════════════════════════════════════
-// EXPORT FUNCTIONS
-// ═════════════════════════════════════════════════════════════════
-console.log('[VIDEO-CALL] Exporting functions...');
+/* ════════════════════════════════════════════════════════
+   UI
+════════════════════════════════════════════════════════ */
+function showVideoCallUI(username) {
+    const peerNameEl = document.getElementById('video-call-peer-name');
+    if (peerNameEl) peerNameEl.textContent = username;
+    if (videoDurationEl) videoDurationEl.textContent = '00:00';
+    if (videoCallModal) videoCallModal.style.display = 'flex';
+}
 
-window.initiateVideoCall = initiateVideoCall;
-window.acceptVideoCall = acceptVideoCall;
-window.rejectVideoCall = rejectVideoCall;
-window.endVideoCall = endVideoCall;
-window.toggleLocalVideo = toggleLocalVideo;
-window.toggleLocalAudio = toggleLocalAudio;
-window.toggleScreenShare = toggleScreenShare;
+/* ════════════════════════════════════════════════════════
+   BUTTON WIRING
+════════════════════════════════════════════════════════ */
+(function wireVideoButtons() {
+    const wire = (id, fn) => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('click', fn);
+    };
+    wire('accept-video-call-btn', () => acceptVideoCall());
+    wire('reject-video-call-btn', () => rejectVideoCall());
+    wire('video-end-btn',         () => endVideoCall());
+    wire('toggle-audio-btn',      () => toggleVideoCallAudio());
+    wire('toggle-video-btn',      () => toggleLocalVideo());
+    wire('share-screen-btn',      () => toggleScreenShare());
+})();
+
+/* ════════════════════════════════════════════════════════
+   EXPORTS
+════════════════════════════════════════════════════════ */
+window.initiateVideoCall      = initiateVideoCall;
+window.acceptVideoCall        = acceptVideoCall;
+window.rejectVideoCall        = rejectVideoCall;
+window.endVideoCall           = endVideoCall;
+window.cleanupVideoCall       = cleanupVideoCall;
+window.toggleLocalVideo       = toggleLocalVideo;
+window.toggleVideoCallAudio   = toggleVideoCallAudio;
+window.toggleScreenShare      = toggleScreenShare;
 window.handleIncomingVideoCall = handleIncomingVideoCall;
-window.handleVideoCallAnswer = handleVideoCallAnswer;
-window.handleVideoCallIce = handleVideoCallIce;
-window.handleVideoCallEnd = handleVideoCallEnd;
+window.handleVideoCallAnswer  = handleVideoCallAnswer;
+window.handleVideoCallIce     = handleVideoCallIce;
+window.handleVideoCallEnd     = handleVideoCallEnd;
 
-console.log('[VIDEO-CALL] ✓ Module loaded successfully');
+console.log('[VIDEO-CALL] ✓ Module loaded');
