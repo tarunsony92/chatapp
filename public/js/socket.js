@@ -156,6 +156,42 @@ function initSocket() {
         });
     });
 
+    // Audio Call Events
+    socket.on('call-initiate', data => {
+        console.log('Incoming call from:', data.from);
+        if (typeof handleIncomingCall === 'function') {
+            handleIncomingCall(data.from, data.offer);
+        }
+    });
+
+    socket.on('call-answer', data => {
+        console.log('Call answer received from:', data.from);
+        if (typeof handleCallAnswer === 'function') {
+            handleCallAnswer(data.from, data.answer);
+        }
+    });
+
+    socket.on('ice-candidate', data => {
+        console.log('ICE candidate from:', data.from);
+        if (typeof handleIceCandidate === 'function') {
+            handleIceCandidate(data.from, data.candidate);
+        }
+    });
+
+    socket.on('call-reject', data => {
+        console.log('Call rejected by:', data.from);
+        if (typeof handleCallRejection === 'function') {
+            handleCallRejection(data.from);
+        }
+    });
+
+    socket.on('call-end', data => {
+        console.log('Call ended by:', data.from);
+        if (typeof handleCallEnd === 'function') {
+            handleCallEnd();
+        }
+    });
+
     socket.on('disconnect', () => {
         console.log('Disconnected from server');
     });

@@ -489,6 +489,46 @@ html, body {
 }
 #back-btn:hover { background: var(--bg-overlay); color: var(--text-primary); }
 
+.audio-call-btn {
+    width: 34px; height: 34px;
+    align-items: center; justify-content: center;
+    background: linear-gradient(135deg, #22d3ee, #06b6d4);
+    border: 1px solid rgba(34, 211, 238, 0.4);
+    border-radius: 10px;
+    color: white;
+    font-size: 18px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.15s;
+    box-shadow: 0 4px 15px rgba(34, 211, 238, 0.3);
+    display: flex;
+}
+.audio-call-btn:hover { 
+    background: linear-gradient(135deg, #06b6d4, #0891b2);
+    box-shadow: 0 6px 20px rgba(34, 211, 238, 0.5);
+    transform: translateY(-1px);
+}
+
+.video-call-btn {
+    width: 34px; height: 34px;
+    align-items: center; justify-content: center;
+    background: linear-gradient(135deg, #ec4899, #db2777);
+    border: 1px solid rgba(236, 72, 153, 0.4);
+    border-radius: 10px;
+    color: white;
+    font-size: 18px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.15s;
+    box-shadow: 0 4px 15px rgba(236, 72, 153, 0.3);
+    display: flex;
+}
+.video-call-btn:hover { 
+    background: linear-gradient(135deg, #db2777, #be185d);
+    box-shadow: 0 6px 20px rgba(236, 72, 153, 0.5);
+    transform: translateY(-1px);
+}
+
 .chat-peer {
     display: flex;
     align-items: center;
@@ -1079,6 +1119,443 @@ html, body {
     transform: translateY(0);
 }
 
+/* ═══════════════════════════════════════════
+   AUDIO CALL MODALS
+═══════════════════════════════════════════ */
+.call-box {
+    width: 90%;
+    max-width: 400px;
+    background: linear-gradient(135deg, rgba(8,23,47,0.95), rgba(15,23,42,0.95));
+    border: 1px solid rgba(34, 211, 238, 0.3);
+    border-radius: var(--radius-xl);
+    box-shadow: 0 40px 100px rgba(0,0,0,0.8), 0 0 40px rgba(34, 211, 238, 0.2);
+    overflow: hidden;
+    animation: slideUp 0.3s var(--ease-spring);
+    display: flex;
+    flex-direction: column;
+}
+
+.call-header {
+    padding: 20px;
+    text-align: center;
+    border-bottom: 1px solid rgba(34, 211, 238, 0.2);
+}
+
+.call-peer-name {
+    font-family: var(--font-display);
+    font-size: 18px;
+    font-weight: 700;
+    color: white;
+    margin-bottom: 6px;
+}
+
+.call-status {
+    font-size: 13px;
+    color: rgba(34, 211, 238, 0.8);
+    font-style: italic;
+}
+
+.call-body {
+    padding: 40px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    min-height: 200px;
+}
+
+.call-icon {
+    font-size: 56px;
+    animation: callPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes callPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+}
+
+.call-duration {
+    font-family: var(--font-display);
+    font-size: 32px;
+    font-weight: 700;
+    color: #22d3ee;
+    font-variant-numeric: tabular-nums;
+}
+
+.call-footer {
+    padding: 16px 20px;
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    border-top: 1px solid rgba(34, 211, 238, 0.2);
+}
+
+.call-btn {
+    padding: 12px 28px;
+    border: none;
+    border-radius: 999px;
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: white;
+}
+
+.call-end-btn {
+    background: linear-gradient(135deg, #f43f5e, #e11d48);
+    box-shadow: 0 4px 15px rgba(244, 63, 94, 0.4);
+    min-width: 140px;
+}
+
+.call-end-btn:hover {
+    background: linear-gradient(135deg, #e11d48, #be198d);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(244, 63, 94, 0.6);
+}
+
+.call-mute-btn {
+    background: linear-gradient(135deg, #6366f1, #4f46e5);
+    box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+    font-size: 18px;
+    min-width: 50px;
+    padding: 12px 12px;
+}
+
+.call-mute-btn:hover {
+    background: linear-gradient(135deg, #4f46e5, #4339ca);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.6);
+}
+
+.incoming-call-box {
+    width: 90%;
+    max-width: 360px;
+    background: linear-gradient(135deg, rgba(8,23,47,0.95), rgba(15,23,42,0.95));
+    border: 1px solid rgba(34, 211, 238, 0.3);
+    border-radius: var(--radius-xl);
+    box-shadow: 0 40px 100px rgba(0,0,0,0.8), 0 0 50px rgba(34, 211, 238, 0.3);
+    overflow: hidden;
+    animation: slideUp 0.3s var(--ease-spring);
+    display: flex;
+    flex-direction: column;
+}
+
+.incoming-call-header {
+    padding: 30px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    text-align: center;
+    border-bottom: 1px solid rgba(34, 211, 238, 0.2);
+}
+
+.incoming-call-icon {
+    font-size: 48px;
+    animation: callRing 1s ease-in-out infinite;
+}
+@keyframes callRing {
+    0%, 100% { transform: rotate(0deg) scale(1); }
+    25% { transform: rotate(-8deg) scale(1.05); }
+    75% { transform: rotate(8deg) scale(1.05); }
+}
+
+.incoming-call-text {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.incoming-call-title {
+    font-size: 13px;
+    color: rgba(34, 211, 238, 0.7);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 600;
+}
+
+.incoming-caller-name {
+    font-family: var(--font-display);
+    font-size: 20px;
+    font-weight: 700;
+    color: white;
+}
+
+.incoming-call-actions {
+    padding: 20px;
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+
+.incoming-call-reject-btn,
+.incoming-call-accept-btn {
+    padding: 12px 28px;
+    border: none;
+    border-radius: 999px;
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    min-width: 120px;
+    color: white;
+}
+
+.incoming-call-reject-btn {
+    background: rgba(244, 63, 94, 0.2);
+    border: 1px solid rgba(244, 63, 94, 0.4);
+    color: #fb7185;
+}
+
+.incoming-call-reject-btn:hover {
+    background: rgba(244, 63, 94, 0.3);
+    border-color: rgba(244, 63, 94, 0.6);
+}
+
+.incoming-call-accept-btn {
+    background: linear-gradient(135deg, #10b981, #059669);
+    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
+}
+
+.incoming-call-accept-btn:hover {
+    background: linear-gradient(135deg, #059669, #047857);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(16, 185, 129, 0.6);
+}
+
+/* ═══════════════════════════════════════════
+   VIDEO CALL MODALS
+═══════════════════════════════════════════ */
+.video-call-box {
+    width: 90%;
+    max-width: 900px;
+    height: 85vh;
+    max-height: 700px;
+    background: linear-gradient(135deg, rgba(8,23,47,0.95), rgba(15,23,42,0.95));
+    border: 1px solid rgba(236, 72, 153, 0.3);
+    border-radius: var(--radius-xl);
+    box-shadow: 0 40px 100px rgba(0,0,0,0.8), 0 0 40px rgba(236, 72, 153, 0.2);
+    overflow: hidden;
+    animation: slideUp 0.3s var(--ease-spring);
+    display: flex;
+    flex-direction: column;
+}
+
+.video-call-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid rgba(236, 72, 153, 0.2);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.video-call-peer-name {
+    font-family: var(--font-display);
+    font-size: 16px;
+    font-weight: 700;
+    color: white;
+}
+
+.video-call-status {
+    font-size: 12px;
+    color: rgba(236, 72, 153, 0.8);
+    font-style: italic;
+    flex: 1;
+    text-align: center;
+    margin: 0 16px;
+}
+
+.video-call-duration {
+    font-family: var(--font-display);
+    font-size: 16px;
+    font-weight: 700;
+    color: #ec4899;
+    font-variant-numeric: tabular-nums;
+}
+
+.video-call-body {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+    position: relative;
+    overflow: hidden;
+}
+
+.video-container {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.remote-video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #000;
+}
+
+.local-video {
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    width: 140px;
+    height: 100px;
+    border-radius: 8px;
+    background: #1a1a1a;
+    border: 2px solid rgba(236, 72, 153, 0.4);
+    object-fit: cover;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.6);
+}
+
+.video-call-footer {
+    padding: 16px 20px;
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    align-items: center;
+    border-top: 1px solid rgba(236, 72, 153, 0.2);
+    background: rgba(15,23,42,0.95);
+}
+
+.video-control-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgba(99, 102, 241, 0.2);
+    border: 1px solid rgba(99, 102, 241, 0.4);
+    color: white;
+    font-size: 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.video-control-btn:hover {
+    background: rgba(99, 102, 241, 0.3);
+    border-color: rgba(99, 102, 241, 0.6);
+    transform: scale(1.1);
+}
+
+.video-call-end-btn {
+    padding: 10px 24px;
+    background: linear-gradient(135deg, #f43f5e, #e11d48);
+    border: none;
+    border-radius: 999px;
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 4px 15px rgba(244, 63, 94, 0.4);
+}
+
+.video-call-end-btn:hover {
+    background: linear-gradient(135deg, #e11d48, #be198d);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(244, 63, 94, 0.6);
+}
+
+.incoming-video-call-box {
+    width: 90%;
+    max-width: 360px;
+    background: linear-gradient(135deg, rgba(8,23,47,0.95), rgba(15,23,42,0.95));
+    border: 1px solid rgba(236, 72, 153, 0.3);
+    border-radius: var(--radius-xl);
+    box-shadow: 0 40px 100px rgba(0,0,0,0.8), 0 0 50px rgba(236, 72, 153, 0.3);
+    overflow: hidden;
+    animation: slideUp 0.3s var(--ease-spring);
+    display: flex;
+    flex-direction: column;
+}
+
+.incoming-video-call-header {
+    padding: 30px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    text-align: center;
+    border-bottom: 1px solid rgba(236, 72, 153, 0.2);
+}
+
+.incoming-video-call-icon {
+    font-size: 48px;
+    animation: callRing 1s ease-in-out infinite;
+}
+
+.incoming-video-call-text {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.incoming-video-call-title {
+    font-size: 13px;
+    color: rgba(236, 72, 153, 0.7);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 600;
+}
+
+.incoming-video-caller-name {
+    font-family: var(--font-display);
+    font-size: 20px;
+    font-weight: 700;
+    color: white;
+}
+
+.incoming-video-call-actions {
+    padding: 20px;
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+
+.incoming-video-call-reject-btn,
+.incoming-video-call-accept-btn {
+    padding: 12px 28px;
+    border: none;
+    border-radius: 999px;
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    min-width: 120px;
+    color: white;
+}
+
+.incoming-video-call-reject-btn {
+    background: rgba(244, 63, 94, 0.2);
+    border: 1px solid rgba(244, 63, 94, 0.4);
+    color: #fb7185;
+}
+
+.incoming-video-call-reject-btn:hover {
+    background: rgba(244, 63, 94, 0.3);
+    border-color: rgba(244, 63, 94, 0.6);
+}
+
+.incoming-video-call-accept-btn {
+    background: linear-gradient(135deg, #ec4899, #db2777);
+    box-shadow: 0 4px 15px rgba(236, 72, 153, 0.4);
+}
+
+.incoming-video-call-accept-btn:hover {
+    background: linear-gradient(135deg, #db2777, #be185d);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(236, 72, 153, 0.6);
+}
+
 .modal-box {
     width: 90%;
     max-width: 420px;
@@ -1333,6 +1810,8 @@ html, body {
                         <div class="chat-peer-status" id="chat-peer-status">No chat selected</div>
                     </div>
                 </div>
+                <button id="video-call-btn" class="video-call-btn" title="Video call" style="display: none;">🎥</button>
+                <button id="audio-call-btn" class="audio-call-btn" title="Audio call" style="display: none;">☎️</button>
             </div>
 
             <ul class="messages-wrap" id="message-container">
@@ -1404,6 +1883,84 @@ html, body {
         <div class="image-viewer-actions">
             <button type="button" id="image-download-btn">⬇ Download</button>
             <button type="button" id="image-close-btn">✕ Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- Incoming Call Modal -->
+<div class="modal-overlay" id="incoming-call-modal" style="display: none;">
+    <div class="incoming-call-box">
+        <div class="incoming-call-header">
+            <div class="incoming-call-icon">☎️</div>
+            <div class="incoming-call-text">
+                <div class="incoming-call-title">Incoming Audio Call</div>
+                <div class="incoming-caller-name" id="incoming-caller-name">User</div>
+            </div>
+        </div>
+        <div class="incoming-call-actions">
+            <button class="incoming-call-reject-btn" onclick="rejectCall()">Decline</button>
+            <button class="incoming-call-accept-btn" onclick="acceptCall()">Accept</button>
+        </div>
+    </div>
+</div>
+
+<!-- Incoming Video Call Modal -->
+<div class="modal-overlay" id="incoming-video-call-modal" style="display: none;">
+    <div class="incoming-video-call-box">
+        <div class="incoming-video-call-header">
+            <div class="incoming-video-call-icon">🎥</div>
+            <div class="incoming-video-call-text">
+                <div class="incoming-video-call-title">Incoming Video Call</div>
+                <div class="incoming-video-caller-name" id="incoming-video-caller-name">User</div>
+            </div>
+        </div>
+        <div class="incoming-video-call-actions">
+            <button class="incoming-video-call-reject-btn" onclick="rejectVideoCall()">Decline</button>
+            <button class="incoming-video-call-accept-btn" onclick="acceptVideoCall()">Accept</button>
+        </div>
+    </div>
+</div>
+
+<!-- Audio Call Modal -->
+<div class="modal-overlay" id="call-modal" style="display: none;">
+    <div class="call-box">
+        <div class="call-header">
+            <div class="call-peer-name" id="call-peer-name">User</div>
+            <div class="call-status" id="call-status">Connecting...</div>
+        </div>
+        <div class="call-body">
+            <div class="call-icon">☎️</div>
+            <div class="call-duration" id="call-duration">00:00</div>
+            <audio id="local-audio" style="display: none;"></audio>
+            <audio id="remote-audio" style="display: none;"></audio>
+        </div>
+        <div class="call-footer">
+            <button class="call-btn call-mute-btn" id="mute-audio-btn" onclick="toggleLocalAudio()" title="Mute audio">🎤</button>
+            <button class="call-btn call-end-btn" id="call-end-btn" onclick="endCall()">End Call</button>
+        </div>
+    </div>
+</div>
+
+<!-- Video Call Modal -->
+<div class="modal-overlay" id="video-call-modal" style="display: none;">
+    <div class="video-call-box">
+        <div class="video-call-header">
+            <div class="video-call-peer-name" id="video-call-peer-name">User</div>
+            <div class="video-call-status" id="video-call-status">Connecting...</div>
+            <div class="video-call-duration" id="video-call-duration">00:00</div>
+        </div>
+        <div class="video-call-body">
+            <div class="video-container">
+                <video id="remote-video" class="remote-video" playsinline autoplay></video>
+                <audio id="remote-audio" playsinline autoplay></audio>
+                <video id="local-video" class="local-video" playsinline autoplay muted></video>
+            </div>
+        </div>
+        <div class="video-call-footer">
+            <button class="video-control-btn" id="toggle-audio-btn" onclick="toggleLocalAudio()" title="Toggle audio">🎤</button>
+            <button class="video-control-btn" id="toggle-video-btn" onclick="toggleLocalVideo()" title="Toggle video">🎥</button>
+            <button class="video-control-btn" id="share-screen-btn" onclick="toggleScreenShare()" title="Share screen">📺</button>
+            <button class="video-call-end-btn" onclick="endVideoCall()">End Call</button>
         </div>
     </div>
 </div>
@@ -1575,7 +2132,7 @@ function setupInactivityLogout() {
    SOCKET
 ═══════════════════════════════════════════ */
 function initSocket() {
-    socket = io();
+    socket = window.socket = io();
     console.log('[SOCKET] Connecting...');
 
     socket.on('connect', () => {
@@ -1650,10 +2207,28 @@ function initSocket() {
         mc.innerHTML = '';
         if (!msgs || msgs.length === 0) {
             mc.innerHTML = '<li class="chat-empty" style="flex:1"><div class="e-icon-big">💬</div><p>No messages yet. Say hello!</p></li>';
-            return;
+        } else {
+            const me = currentUsername || nameInputEl.textContent;
+            msgs.forEach(m => addAnyMsgToUI(m.from === me, m));
         }
-        const me = currentUsername || nameInputEl.textContent;
-        msgs.forEach(m => addAnyMsgToUI(m.from === me, m));
+        
+        // Load and display call history with current user
+        if (currentChatUser && window.getCallHistory) {
+            const callHistory = window.getCallHistory(currentChatUser);
+            if (callHistory && callHistory.length > 0) {
+                // Sort by timestamp
+                callHistory.sort((a, b) => a.timestamp - b.timestamp);
+                
+                // Add call logs to UI
+                callHistory.forEach(call => {
+                    const me = currentUsername || nameInputEl.textContent;
+                    const isOwn = call.initiator === me;
+                    const callLogMsg = window.createCallLogMessage(call);
+                    addCallLogToUI(isOwn, call, callLogMsg);
+                });
+            }
+        }
+        
         mc.scrollTop = mc.scrollHeight;
     });
 
@@ -1674,6 +2249,76 @@ function initSocket() {
     socket.on('unseen-count', data => {
         window.unseenCounts[data.from] = data.count;
         updateUnseenBadge(data.from);
+    });
+
+    // Audio Call Events
+    socket.on('call-initiate', data => {
+        console.log('[SOCKET] Incoming call from:', data.from);
+        if (typeof handleIncomingCall === 'function') {
+            handleIncomingCall(data.from, data.offer);
+        }
+    });
+
+    socket.on('call-answer', data => {
+        console.log('[SOCKET] Call answer from:', data.from);
+        if (typeof handleCallAnswer === 'function') {
+            handleCallAnswer(data.from, data.answer);
+        }
+    });
+
+    socket.on('ice-candidate', data => {
+        console.log('[SOCKET] ICE candidate from:', data.from);
+        if (typeof handleIceCandidate === 'function') {
+            handleIceCandidate(data.from, data.candidate);
+        }
+    });
+
+    socket.on('call-reject', data => {
+        console.log('[SOCKET] Call rejected by:', data.from);
+        if (typeof handleCallRejection === 'function') {
+            handleCallRejection(data.from);
+        }
+    });
+
+    socket.on('call-end', data => {
+        console.log('[SOCKET] Call ended by:', data.from);
+        if (typeof handleCallEnd === 'function') {
+            handleCallEnd();
+        }
+    });
+
+    // Video Call Events
+    socket.on('video-call-initiate', data => {
+        console.log('[SOCKET] Incoming video call from:', data.from);
+        if (typeof handleIncomingVideoCall === 'function') {
+            handleIncomingVideoCall(data);
+        }
+    });
+
+    socket.on('video-call-answer', data => {
+        console.log('[SOCKET] Video call answer from:', data.from);
+        if (typeof handleVideoCallAnswer === 'function') {
+            handleVideoCallAnswer(data);
+        }
+    });
+
+    socket.on('video-call-ice', data => {
+        console.log('[SOCKET] Video ICE candidate from:', data.from);
+        if (typeof handleVideoCallIce === 'function') {
+            handleVideoCallIce(data);
+        }
+    });
+
+    socket.on('video-call-reject', data => {
+        console.log('[SOCKET] Video call rejected by:', data.from);
+        alert(data.from + ' declined the video call');
+    });
+
+    socket.on('video-call-end', data => {
+        console.log('[SOCKET] Video call ended by:', data.from);
+        if (typeof handleVideoCallEnd === 'function') {
+            handleVideoCallEnd();
+        }
     });
 }
 
@@ -1709,6 +2354,52 @@ document.getElementById('back-btn').addEventListener('click', () => {
     localStorage.removeItem('chatWith');
     showSidebarPanel();
     document.getElementById('typing-indicator').textContent = '';
+});
+
+document.getElementById('audio-call-btn').addEventListener('click', function() {
+    if (!currentChatUser) {
+        alert('Please select a user to call');
+        return;
+    }
+    
+    // Wait for module to load if needed
+    const callFunction = () => {
+        if (typeof window.initiateAudioCall === 'function') {
+            try {
+                window.initiateAudioCall(currentChatUser);
+            } catch (err) {
+                console.error('[CALL] Error:', err);
+                alert('Error: ' + err.message);
+            }
+        } else {
+            console.log('[CALL] Waiting for audio call module...');
+            setTimeout(callFunction, 100);
+        }
+    };
+    callFunction();
+});
+
+document.getElementById('video-call-btn').addEventListener('click', function() {
+    if (!currentChatUser) {
+        alert('Please select a user to video call');
+        return;
+    }
+    
+    // Wait for module to load if needed
+    const callFunction = () => {
+        if (typeof window.initiateVideoCall === 'function') {
+            try {
+                window.initiateVideoCall(currentChatUser);
+            } catch (err) {
+                console.error('[CALL] Error:', err);
+                alert('Error: ' + err.message);
+            }
+        } else {
+            console.log('[CALL] Waiting for video call module...');
+            setTimeout(callFunction, 100);
+        }
+    };
+    callFunction();
 });
 
 /* ═══════════════════════════════════════════
@@ -1862,6 +2553,18 @@ function selectUser(username) {
     socket.emit('get-history', username);
     socket.emit('mark-read', {from: username});
 
+    // Show audio call button
+    const audioCallBtn = document.getElementById('audio-call-btn');
+    if (audioCallBtn) {
+        audioCallBtn.style.display = 'flex';
+    }
+
+    // Show video call button
+    const videoCallBtn = document.getElementById('video-call-btn');
+    if (videoCallBtn) {
+        videoCallBtn.style.display = 'flex';
+    }
+
     resetInactivity();
     showChatPanel();
 }
@@ -1997,6 +2700,47 @@ function addVoiceToUI(isOwn, data) {
     audio.src = data.content;
     bubble.appendChild(audio);
     finalizeMsgRow(row, av, bw, bubble, isOwn, data);
+}
+
+function addCallLogToUI(isOwn, callRecord, callLogMsg) {
+    const me = nameInputEl.textContent;
+    const row = document.createElement('li');
+    row.className = 'msg-row' + (isOwn ? ' own' : '');
+    row.style.listStyle = 'none';
+
+    // Avatar
+    const av = document.createElement('div');
+    av.className = 'msg-avatar';
+    av.textContent = getInitials(isOwn ? me : callRecord.with);
+
+    // Bubble wrap
+    const bw = document.createElement('div');
+    bw.className = 'msg-bubble-wrap';
+
+    // Call log bubble
+    const bubble = document.createElement('div');
+    bubble.className = 'call-log-bubble';
+    bubble.innerHTML = `<div style="font-size:13px; color:#666; display:flex; align-items:center; gap:8px; padding:10px; background:#f5f5f5; border-radius:12px; max-width:250px;">
+        <span style="font-size:16px;">${callRecord.type === 'audio' ? '☎️' : '🎥'}</span>
+        <div style="flex:1;">
+            <div style="font-weight:500; color:#333;">${callLogMsg}</div>
+            <div style="font-size:11px; color:#999; margin-top:4px;">${new Date(callRecord.timestamp).toLocaleString()}</div>
+        </div>
+    </div>`;
+    
+    bw.appendChild(bubble);
+    
+    // Time
+    const timeEl = document.createElement('div');
+    timeEl.className = 'msg-time';
+    timeEl.textContent = formatTime(callRecord.timestamp);
+    bw.appendChild(timeEl);
+    
+    row.appendChild(av);
+    row.appendChild(bw);
+    
+    const mc = document.getElementById('message-container');
+    mc.appendChild(row);
 }
 
 function scrollToMessage(fromUser, time) {
@@ -2221,6 +2965,56 @@ if (themeBtn) {
 
 console.log('✓ Chat App Loaded Successfully - Theme: ' + currentTheme);
 console.log('NexChat ⚡ Ready');
+</script>
+
+<!-- Module Imports -->
+<script src="/js/call-logger.js"></script>
+<script src="/js/audio-call.js"></script>
+<script src="/js/video-call.js"></script>
+<script>
+console.log('[INIT] Script loading phase...');
+
+// Verify all modules are loaded and functional
+window.requiredFunctions = ['initiateVideoCall', 'initiateAudioCall', 'logCall', 'endCall', 'endVideoCall'];
+window.modulesLoaded = false;
+
+function checkModulesLoaded() {
+    const missing = window.requiredFunctions.filter(fn => typeof window[fn] !== 'function');
+    
+    if (missing.length === 0) {
+        window.modulesLoaded = true;
+        console.log('[MODULE-LOAD] ✓ All call modules loaded');
+        console.log('[MODULE-LOAD] Available functions:', window.requiredFunctions.join(', '));
+        return true;
+    } else {
+        console.log('[MODULE-LOAD] Missing functions:', missing, '- Retrying...');
+        return false;
+    }
+}
+
+// Check modules after a small delay (allow time for scripts to parse)
+console.log('[INIT] Scheduling module check...');
+setTimeout(() => {
+    console.log('[INIT] Running module check...');
+    console.log('[MODULE-CHECK] initiateVideoCall type:', typeof window.initiateVideoCall);
+    console.log('[MODULE-CHECK] initiateAudioCall type:', typeof window.initiateAudioCall);
+    
+    if (!checkModulesLoaded()) {
+        console.warn('[MODULE-LOAD] Some modules are still loading, will retry...');
+        const retryInterval = setInterval(() => {
+            console.log('[MODULE-LOAD] Retry check...');
+            if (checkModulesLoaded()) {
+                clearInterval(retryInterval);
+            }
+        }, 200);
+        
+        // Stop retrying after 3 seconds
+        setTimeout(() => {
+            clearInterval(retryInterval);
+            console.error('[MODULE-LOAD] Failed to load all modules after 3 seconds');
+        }, 3000);
+    }
+}, 100);
 </script>
 </body>
 </html>

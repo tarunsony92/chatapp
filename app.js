@@ -348,6 +348,125 @@ io.on('connection', (socket) => {
         );
     });
 
+    // Audio Call Signaling
+    socket.on('call-initiate', (data) => {
+        if (!data || !data.to) return;
+        const recips = userSockets.get(data.to);
+        if (recips) {
+            recips.forEach(id => io.to(id).emit('call-initiate', {
+                from: socket.username,
+                offer: data.offer
+            }));
+        }
+    });
+
+    socket.on('call-answer', (data) => {
+        if (!data || !data.to) return;
+        const recips = userSockets.get(data.to);
+        if (recips) {
+            recips.forEach(id => io.to(id).emit('call-answer', {
+                from: socket.username,
+                answer: data.answer
+            }));
+        }
+    });
+
+    socket.on('ice-candidate', (data) => {
+        if (!data || !data.to || !data.candidate) return;
+        const recips = userSockets.get(data.to);
+        if (recips) {
+            recips.forEach(id => io.to(id).emit('ice-candidate', {
+                from: socket.username,
+                candidate: data.candidate
+            }));
+        }
+    });
+
+    socket.on('call-reject', (data) => {
+        if (!data || !data.to) return;
+        const recips = userSockets.get(data.to);
+        if (recips) {
+            recips.forEach(id => io.to(id).emit('call-reject', {
+                from: socket.username
+            }));
+        }
+    });
+
+    socket.on('call-end', (data) => {
+        if (!data || !data.to) return;
+        const recips = userSockets.get(data.to);
+        if (recips) {
+            recips.forEach(id => io.to(id).emit('call-end', {
+                from: socket.username
+            }));
+        }
+    });
+
+    // Video Call Signaling
+    socket.on('video-call-initiate', (data) => {
+        if (!data || !data.to) return;
+        const recips = userSockets.get(data.to);
+        if (recips) {
+            recips.forEach(id => io.to(id).emit('video-call-initiate', {
+                from: socket.username,
+                offer: data.offer
+            }));
+        }
+    });
+
+    socket.on('video-call-answer', (data) => {
+        if (!data || !data.to) return;
+        const recips = userSockets.get(data.to);
+        if (recips) {
+            recips.forEach(id => io.to(id).emit('video-call-answer', {
+                from: socket.username,
+                answer: data.answer
+            }));
+        }
+    });
+
+    socket.on('video-call-ice-candidate', (data) => {
+        if (!data || !data.to || !data.candidate) return;
+        const recips = userSockets.get(data.to);
+        if (recips) {
+            recips.forEach(id => io.to(id).emit('video-call-ice-candidate', {
+                from: socket.username,
+                candidate: data.candidate
+            }));
+        }
+    });
+
+    socket.on('video-call-reject', (data) => {
+        if (!data || !data.to) return;
+        const recips = userSockets.get(data.to);
+        if (recips) {
+            recips.forEach(id => io.to(id).emit('video-call-reject', {
+                from: socket.username
+            }));
+        }
+    });
+
+    socket.on('video-call-end', (data) => {
+        if (!data || !data.to) return;
+        const recips = userSockets.get(data.to);
+        if (recips) {
+            recips.forEach(id => io.to(id).emit('video-call-end', {
+                from: socket.username
+            }));
+        }
+    });
+
+    socket.on('screen-share-toggle', (data) => {
+        if (!data || !data.to) return;
+        const recips = userSockets.get(data.to);
+        if (recips) {
+            recips.forEach(id => io.to(id).emit('screen-share-toggle', {
+                from: socket.username,
+                active: data.active
+            }));
+        }
+    });
+
     socket.on('disconnect', () => {
         console.log('[SOCKET] Disconnected:', socket.username);
         socketsConnected.delete(socket.id);
