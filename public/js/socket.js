@@ -7,7 +7,9 @@ var clientCountElement = document.getElementById('client-total');
 
 /** Initialize socket connection */
 function initSocket() {
-    socket = io({ withCredentials: true });
+    socket = io(window.location.origin, {
+    transports: ['websocket'], withCredentials: true });
+    
     setupInactivityLogout();
 
     socket.on('connect_error', function(err) {

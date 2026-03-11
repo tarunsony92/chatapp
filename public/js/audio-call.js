@@ -31,10 +31,14 @@ var remoteAudioEl     = document.getElementById('remote-audio-call');
 
 /* ─── ICE servers ───────────────────────────────────── */
 var AUDIO_ICE_CONFIG = {
-    iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
-    ]
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    {
+      urls: "turn:openrelay.metered.ca:80",
+      username: "openrelayproject",
+      credential: "openrelayproject"
+    }
+  ]
 };
 
 /* ════════════════════════════════════════════════════════
