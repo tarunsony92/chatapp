@@ -3,14 +3,14 @@
  * Manages all real-time socket connections and events
  */
 
-const clientCountElement = document.getElementById('client-total');
+var clientCountElement = document.getElementById('client-total');
 
 /** Initialize socket connection */
 function initSocket() {
     socket = io({ withCredentials: true });
     setupInactivityLogout();
 
-    socket.on('connect_error', err => {
+    socket.on('connect_error', function(err) {
         console.error('Socket error:', err.message);
         if (err.message === 'authentication error') {
             alert('Session expired. Please log in again.');
@@ -18,188 +18,175 @@ function initSocket() {
         }
     });
 
-    socket.on('connect', () => {
-        console.log('Connected to server');
+    socket.on('connect', function() {
+        console.log('[SOCKET] Connected:', socket.id);
     });
 
-    socket.on('user-list', list => {
-        const me = nameInput.value;
-        window.currentUserList = list;
-        window.unseenCounts = window.unseenCounts || {};
-        allAvailableUsers = list.filter(u => u.username !== me);
-        
-        // Render only users with whom we have exchanged messages
+    socket.on('disconnect', function() {
+        console.log('[SOCKET] Disconnected');
+    });
+
+    /* ── User list ── */
+    socket.on('users', function(users) {
+        allAvailableUsers = users;
+        window.currentUserList = users;
+
+        var onlineCount = users.filter(function(u) { return u.online; }).length;
+        if (clientCountElement) clientCountElement.textContent = onlineCount + ' online';
+
         updateChatUserList();
 
-        // Fetch unseen counts for all users
-        allAvailableUsers.forEach(obj => {
-            socket.emit('get-unseen', obj.username);
-        });
-
-        // Auto-reselect last chat partner
-        const stored = localStorage.getItem('chatWith');
-        if (stored && stored !== me && list.some(u => u.username === stored)) {
-            if (currentChatUser !== stored) selectUser(stored);
-            else showChatPanel();
-        }
-    });
-
-    socket.on('client-count', count => {
-        clientCountElement.textContent = `Online: ${count}`;
-    });
-
-    socket.on('message', data => {
-        // Save incoming message to localStorage for chat list tracking
-        const chatHistory = JSON.parse(localStorage.getItem('chatHistory') || '[]');
-        chatHistory.push(data);
-        localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
-        updateChatUserList();
-        
-        if (data.from === currentChatUser || data.to === currentChatUser) {
-            if (data.from === nameInput.value) return;
-            addMessageToUI(false, data);
-        } else {
-            window.unseenCounts = window.unseenCounts || {};
-            window.unseenCounts[data.from] = (window.unseenCounts[data.from] || 0) + 1;
-            updateUnseenBadge(data.from);
-        }
-    });
-
-    socket.on('image', data => {
-        // Save incoming image to localStorage for chat list tracking
-        const chatHistory = JSON.parse(localStorage.getItem('chatHistory') || '[]');
-        chatHistory.push(data);
-        localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
-        updateChatUserList();
-        
-        if (data.from === currentChatUser || data.to === currentChatUser) {
-            if (data.from === nameInput.value) return;
-            addImageToUI(false, data);
-        } else {
-            window.unseenCounts = window.unseenCounts || {};
-            window.unseenCounts[data.from] = (window.unseenCounts[data.from] || 0) + 1;
-            updateUnseenBadge(data.from);
-        }
-    });
-
-    socket.on('voice', data => {
-        // Save incoming voice to localStorage for chat list tracking
-        const chatHistory = JSON.parse(localStorage.getItem('chatHistory') || '[]');
-        chatHistory.push(data);
-        localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
-        updateChatUserList();
-        
-        if (data.from === currentChatUser || data.to === currentChatUser) {
-            if (data.from === nameInput.value) return;
-            addVoiceToUI(false, data);
-        } else {
-            window.unseenCounts = window.unseenCounts || {};
-            window.unseenCounts[data.from] = (window.unseenCounts[data.from] || 0) + 1;
-            updateUnseenBadge(data.from);
-        }
-    });
-
-    socket.on('typing', info => {
-        const typingIndicator = document.getElementById('typing-indicator');
-        if (!typingIndicator) return;
-        if (info.from === currentChatUser) {
-            typingIndicator.textContent = info.active ? `${escapeHtml(info.from)} is typing...` : '';
-        }
-    });
-
-    socket.on('history', msgs => {
-        messageContainer.innerHTML = '';
-        if (msgs.length === 0) {
-            messageContainer.innerHTML = '<li class="message-feedback"><p class="feedback">No messages yet. Say hi! 👋</p></li>';
-            return;
-        }
-
-        msgs.forEach(msg => {
-            const isOwn = msg.from === nameInput.value;
-            if (msg.type === 'text') addMessageToUI(isOwn, msg);
-            else if (msg.type === 'image') addImageToUI(isOwn, msg);
-            else if (msg.type === 'voice') addVoiceToUI(isOwn, msg);
-        });
-    });
-
-    socket.on('mark-read', data => {
-        // Update UI to show read status
-        const lis = messageContainer.querySelectorAll('li');
-        lis.forEach(li => {
-            const span = li.querySelector('.msg-time');
-            if (span && span.textContent.includes(data.from)) {
-                // Message from this user was read
-                const msgElement = li.querySelector('.message');
-                if (msgElement && !msgElement.classList.contains('read-status-updated')) {
-                    msgElement.classList.add('read-status-updated');
+        if (currentChatUser) {
+            var obj = users.find(function(u) { return u.username === currentChatUser; });
+            if (obj) {
+                var statusEl = document.getElementById('chat-peer-status');
+                if (statusEl) {
+                    statusEl.textContent = obj.online ? '● Online' : '○ Offline';
+                    statusEl.className = 'chat-peer-status' + (obj.online ? ' is-online' : '');
                 }
             }
-        });
+        }
+
+        // Auto-reselect last chat partner
+        var stored = localStorage.getItem('chatWith');
+        if (stored && stored !== currentUsername && users.some(function(u) { return u.username === stored; })) {
+            if (currentChatUser !== stored) selectUser(stored);
+        }
     });
 
-    socket.on('unseen-count', data => {
-        window.unseenCounts = window.unseenCounts || {};
+    /* ── Incoming text message ── */
+    socket.on('message', function(data) {
+        if (data.from === currentUsername) return;
+        trackMsg(data);
+        if (data.from === currentChatUser) {
+            addMessageToUI(false, data);
+            socket.emit('mark-read', { from: data.from });
+        } else {
+            window.unseenCounts[data.from] = (window.unseenCounts[data.from] || 0) + 1;
+            updateChatUserList();
+        }
+    });
+
+    /* ── Incoming image ── */
+    socket.on('image', function(data) {
+        if (data.from === currentUsername) return;
+        trackMsg(data);
+        if (data.from === currentChatUser) {
+            addImageToUI(false, data);
+            socket.emit('mark-read', { from: data.from });
+        } else {
+            window.unseenCounts[data.from] = (window.unseenCounts[data.from] || 0) + 1;
+            updateChatUserList();
+        }
+    });
+
+    /* ── Incoming voice ── */
+    socket.on('voice', function(data) {
+        if (data.from === currentUsername) return;
+        trackMsg(data);
+        if (data.from === currentChatUser) {
+            addVoiceToUI(false, data);
+            socket.emit('mark-read', { from: data.from });
+        } else {
+            window.unseenCounts[data.from] = (window.unseenCounts[data.from] || 0) + 1;
+            updateChatUserList();
+        }
+    });
+
+    /* ── Chat history ── */
+    socket.on('history', function(msgs) {
+        messageMap = {};
+        var mc = document.getElementById('message-container');
+        mc.innerHTML = '';
+        if (!msgs || msgs.length === 0) {
+            mc.innerHTML = '<li class="chat-empty" style="flex:1"><div class="e-icon-big">💬</div><p>No messages yet. Say hello!</p></li>';
+        } else {
+            msgs.forEach(function(m) {
+                addAnyMsgToUI(m.from === currentUsername, m);
+            });
+        }
+        mc.scrollTop = mc.scrollHeight;
+    });
+
+    /* ── Typing indicator ── */
+    socket.on('typing', function(data) {
+        var ti = document.getElementById('typing-indicator');
+        if (!ti) return;
+        if (data.from === currentChatUser && data.active) {
+            ti.innerHTML = '<span>' + escapeHtml(data.from) + ' is typing</span>'
+                + '<div class="typing-dots"><span></span><span></span><span></span></div>';
+        } else {
+            ti.innerHTML = '';
+        }
+    });
+
+    /* ── Read receipts ── */
+    socket.on('message-read', function() { updateChatUserList(); });
+    socket.on('msgs-read',    function() { updateChatUserList(); });
+
+    /* ── Unseen counts ── */
+    socket.on('unseen-count', function(data) {
         window.unseenCounts[data.from] = data.count;
         updateUnseenBadge(data.from);
     });
 
-    socket.on('msgs-read', data => {
-        // Mark messages from current user as read by recipient
-        const lis = messageContainer.querySelectorAll('li');
-        lis.forEach(li => {
-            const span = li.querySelector('.msg-time');
-            if (span && span.textContent.includes('✓ sent')) {
-                // Update to show as read
-                const status = span.textContent.replace('✓ sent', '✓✓');
-                span.textContent = status;
-            }
-        });
+    /* ════════════════════════════════════════════════════
+       AUDIO CALL EVENTS
+    ════════════════════════════════════════════════════ */
+    socket.on('call-initiate', function(data) {
+        console.log('[SOCKET] call-initiate from:', data.from);
+        if (typeof handleIncomingCall === 'function') handleIncomingCall(data.from, data.offer);
     });
 
-    // Audio Call Events
-    socket.on('call-initiate', data => {
-        console.log('Incoming call from:', data.from);
-        if (typeof handleIncomingCall === 'function') {
-            handleIncomingCall(data.from, data.offer);
-        }
+    socket.on('call-answer', function(data) {
+        console.log('[SOCKET] call-answer from:', data.from);
+        if (typeof handleCallAnswer === 'function') handleCallAnswer(data.from, data.answer);
     });
 
-    socket.on('call-answer', data => {
-        console.log('Call answer received from:', data.from);
-        if (typeof handleCallAnswer === 'function') {
-            handleCallAnswer(data.from, data.answer);
-        }
+    socket.on('ice-candidate', function(data) {
+        if (typeof handleIceCandidate === 'function') handleIceCandidate(data.from, data.candidate);
     });
 
-    socket.on('ice-candidate', data => {
-        console.log('ICE candidate from:', data.from);
-        if (typeof handleIceCandidate === 'function') {
-            handleIceCandidate(data.from, data.candidate);
-        }
+    socket.on('call-reject', function(data) {
+        console.log('[SOCKET] call-reject from:', data.from);
+        if (typeof handleCallRejection === 'function') handleCallRejection(data.from);
     });
 
-    socket.on('call-reject', data => {
-        console.log('Call rejected by:', data.from);
-        if (typeof handleCallRejection === 'function') {
-            handleCallRejection(data.from);
-        }
+    socket.on('call-end', function() {
+        console.log('[SOCKET] call-end');
+        if (typeof handleCallEnd === 'function') handleCallEnd();
     });
 
-    socket.on('call-end', data => {
-        console.log('Call ended by:', data.from);
-        if (typeof handleCallEnd === 'function') {
-            handleCallEnd();
-        }
+    /* ════════════════════════════════════════════════════
+       VIDEO CALL EVENTS
+    ════════════════════════════════════════════════════ */
+    socket.on('video-call-initiate', function(data) {
+        console.log('[SOCKET] video-call-initiate from:', data.from);
+        if (typeof handleIncomingVideoCall === 'function') handleIncomingVideoCall(data);
     });
 
-    socket.on('disconnect', () => {
-        console.log('Disconnected from server');
+    socket.on('video-call-answer', function(data) {
+        console.log('[SOCKET] video-call-answer from:', data.from);
+        if (typeof handleVideoCallAnswer === 'function') handleVideoCallAnswer(data);
+    });
+
+    socket.on('video-call-ice', function(data) {
+        if (typeof handleVideoCallIce === 'function') handleVideoCallIce(data);
+    });
+
+    socket.on('video-call-reject', function(data) {
+        alert((data.from || 'User') + ' declined the video call.');
+        if (typeof cleanupVideoCall === 'function') cleanupVideoCall();
+    });
+
+    socket.on('video-call-end', function() {
+        if (typeof handleVideoCallEnd === 'function') handleVideoCallEnd();
     });
 }
 
 /** Emit typing status */
 function emitTyping(active) {
     if (currentChatUser && socket) {
-        socket.emit('typing', { to: currentChatUser, active });
+        socket.emit('typing', { to: currentChatUser, active: active });
     }
 }

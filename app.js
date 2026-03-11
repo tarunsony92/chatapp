@@ -425,11 +425,11 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('video-call-ice-candidate', (data) => {
+    socket.on('video-call-ice', (data) => {
         if (!data || !data.to || !data.candidate) return;
         const recips = userSockets.get(data.to);
         if (recips) {
-            recips.forEach(id => io.to(id).emit('video-call-ice-candidate', {
+            recips.forEach(id => io.to(id).emit('video-call-ice', {
                 from: socket.username,
                 candidate: data.candidate
             }));
